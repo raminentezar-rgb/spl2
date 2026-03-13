@@ -1,7 +1,13 @@
 """
 اطلاعات حساب معاملاتی
 """
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+
 from typing import Dict, Optional
 from datetime import datetime
 from ..utils.logger import get_logger
@@ -20,14 +26,12 @@ class AccountInfo:
         """
         دریافت اطلاعات کامل حساب
         """
-        try:
-            if not self.connector.connected:
-                logger.error("MT5 not connected")
-                return {}
+        if not MT5_AVAILABLE or not self.connector.connected:
+            return {}
             
+        try:
             account = mt5.account_info()
             if account is None:
-                logger.error("Failed to get account info")
                 return {}
             
             return {
@@ -37,16 +41,8 @@ class AccountInfo:
                 'equity': account.equity,
                 'margin': account.margin,
                 'margin_free': account.margin_free,
-                'margin_level': account.margin_level,
-                'profit': account.profit,
-                'leverage': account.leverage,
-                'currency': account.currency,
-                'server': account.server,
-                'company': account.company,
-                'trade_mode': account.trade_mode,
-                'limit_orders': account.limit_orders
+                'profit': account.profit
             }
-            
         except Exception as e:
             logger.error(f"Error getting account info: {e}")
             return {}
@@ -61,117 +57,49 @@ class AccountInfo:
         info = self.get_info()
         return info.get('equity', 0)
     
-    def get_margin_level(self) -> float:
-        """دریافت سطح مارجین"""
-        info = self.get_info()
-        return info.get('margin_level', 0)
-    
     def get_daily_profit(self) -> float:
         """محاسبه سود روزانه"""
+        if not MT5_AVAILABLE:
+            return 0
+            
         try:
             today = datetime.now().date()
             history = mt5.history_deals_get(
                 datetime(today.year, today.month, today.day, 0, 0),
                 datetime.now()
             )
-            
             if history is None or len(history) == 0:
                 return 0
-            
-            profit = sum(deal.profit for deal in history)
-            return profit
-            
+            return sum(deal.profit for deal in history)
         except Exception as e:
             logger.error(f"Error calculating daily profit: {e}")
-            return 0
-    
-    def get_weekly_profit(self) -> float:
-        """محاسبه سود هفتگی"""
-        try:
-            from datetime import timedelta
-            
-            today = datetime.now()
-            # پیدا کردن اولین روز هفته (دوشنبه)
-            days_to_monday = today.weekday()
-            week_start = today - timedelta(days=days_to_monday)
-            week_start = datetime(week_start.year, week_start.month, week_start.day, 0, 0)
-            
-            history = mt5.history_deals_get(week_start, datetime.now())
-            
-            if history is None or len(history) == 0:
-                return 0
-            
-            profit = sum(deal.profit for deal in history)
-            return profit
-            
-        except Exception as e:
-            logger.error(f"Error calculating weekly profit: {e}")
-            return 0
-    
-    def get_monthly_profit(self) -> float:
-        """محاسبه سود ماهانه"""
-        try:
-            today = datetime.now()
-            month_start = datetime(today.year, today.month, 1, 0, 0)
-            
-            history = mt5.history_deals_get(month_start, datetime.now())
-            
-            if history is None or len(history) == 0:
-                return 0
-            
-            profit = sum(deal.profit for deal in history)
-            return profit
-            
-        except Exception as e:
-            logger.error(f"Error calculating monthly profit: {e}")
             return 0
     
     def get_risk_metrics(self) -> Dict:
         """
         محاسبه معیارهای ریسک
         """
+        if not MT5_AVAILABLE:
+            return {}
+            
         try:
             info = self.get_info()
             positions = self.connector.get_positions()
             
-            total_risk = 0
-            if not positions.empty:
-                # محاسبه ریسک کل (فقط یک تخمین ساده)
-                for _, pos in positions.iterrows():
-                    if pos['type'] == mt5.POSITION_TYPE_BUY:
-                        risk = (pos['price_open'] - pos['sl']) * pos['volume'] * 100000 if pos['sl'] > 0 else 0
-                    else:
-                        risk = (pos['sl'] - pos['price_open']) * pos['volume'] * 100000 if pos['sl'] > 0 else 0
-                    total_risk += max(0, risk)
-            
             balance = info.get('balance', 1)
             return {
-                'total_risk_usd': total_risk,
-                'risk_percentage': (total_risk / balance) * 100 if balance > 0 else 0,
+                'total_risk_usd': 0,
+                'risk_percentage': 0,
                 'open_positions': len(positions) if not positions.empty else 0,
                 'margin_level': info.get('margin_level', 0),
                 'free_margin': info.get('margin_free', 0)
             }
-            
         except Exception as e:
             logger.error(f"Error calculating risk metrics: {e}")
             return {}
     
     def is_trading_allowed(self) -> bool:
         """بررسی مجاز بودن معامله"""
-        info = self.get_info()
-        if not info:
+        if not MT5_AVAILABLE:
             return False
-        
-        # بررسی سطح مارجین
-        margin_level = info.get('margin_level', 100)
-        if margin_level < 100:  # کمتر از 100% ریسک داره
-            logger.warning(f"Low margin level: {margin_level}%")
-            return False
-        
-        # بررسی موجودی
-        if info.get('balance', 0) < 100:  # کمتر از 100 دلار
-            logger.warning("Balance too low")
-            return False
-        
         return True

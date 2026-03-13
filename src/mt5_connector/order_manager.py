@@ -1,7 +1,13 @@
 """
 مدیریت سفارشات در متاتریدر 5
 """
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+
 import pandas as pd
 from typing import Dict, Optional, List, Tuple
 from datetime import datetime
@@ -36,23 +42,12 @@ class OrderManager:
                         order_type: str = "market") -> Dict:
         """
         ثبت سفارش خرید
-        
-        Args:
-            symbol: نماد معاملاتی
-            volume: حجم معامله
-            sl: حد ضرر
-            tp: حد سود
-            comment: توضیحات
-            order_type: نوع سفارش ('market', 'limit', 'stop')
-            
-        Returns:
-            Dict: نتیجه سفارش
         """
+        if not MT5_AVAILABLE or not self.connector.connected:
+            logger.error("MT5 not available or not connected")
+            return {'success': False, 'error': 'MT5 not available'}
+
         try:
-            if not self.connector.connected:
-                logger.error("MT5 not connected")
-                return {'success': False, 'error': 'Not connected'}
-            
             # دریافت قیمت‌های فعلی
             tick = mt5.symbol_info_tick(symbol)
             if tick is None:
@@ -116,11 +111,11 @@ class OrderManager:
         """
         ثبت سفارش فروش
         """
+        if not MT5_AVAILABLE or not self.connector.connected:
+            logger.error("MT5 not available or not connected")
+            return {'success': False, 'error': 'MT5 not available'}
+
         try:
-            if not self.connector.connected:
-                logger.error("MT5 not connected")
-                return {'success': False, 'error': 'Not connected'}
-            
             tick = mt5.symbol_info_tick(symbol)
             if tick is None:
                 logger.error(f"Failed to get tick for {symbol}")
@@ -181,6 +176,9 @@ class OrderManager:
         """
         ثبت سفارش محدود (Limit Order)
         """
+        if not MT5_AVAILABLE:
+            return {'success': False, 'error': 'MT5 not available'}
+
         try:
             mt5_order_type = mt5.ORDER_TYPE_BUY_LIMIT if order_type == 'buy' else mt5.ORDER_TYPE_SELL_LIMIT
             
@@ -223,6 +221,9 @@ class OrderManager:
         """
         تغییر سفارش موجود
         """
+        if not MT5_AVAILABLE:
+            return {'success': False, 'error': 'MT5 not available'}
+
         try:
             # دریافت سفارش فعلی
             order = mt5.orders_get(ticket=order_id)
@@ -263,6 +264,9 @@ class OrderManager:
         """
         بستن یک پوزیشن
         """
+        if not MT5_AVAILABLE:
+            return {'success': False, 'error': 'MT5 not available'}
+
         try:
             # دریافت پوزیشن
             position = mt5.positions_get(ticket=position_id)
@@ -340,6 +344,9 @@ class OrderManager:
     
     def calculate_pips_to_price(self, symbol: str, pips: float) -> float:
         """تبدیل پیپ به قیمت"""
+        if not MT5_AVAILABLE:
+            return pips * 0.0001
+            
         symbol_info = mt5.symbol_info(symbol)
         if symbol_info is None:
             return pips * 0.0001  # تخمین
