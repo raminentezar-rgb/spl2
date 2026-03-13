@@ -1,0 +1,64 @@
+# config.yaml - نسخه پایدار و محافظه‌کارانه
+
+mt5:
+  path: "C:/Program Files/MetaTrader 5/terminal64.exe"
+  login: ${MT5_LOGIN}
+  server: ${MT5_SERVER}
+  timeout: 5000
+
+trading:
+  symbol: "XAUUSD"
+  timeframe: "M5"
+  volume: 0.01
+  magic_number: 234000
+  data_source: "yahoo"  # Options: "mt5", "yahoo"
+  signal_only: true     # If true, won't place actual trades on MT5
+
+strategy:
+  min_higher_lows: 4
+  ma_period: 40
+  pullback_threshold: 0.001
+  risk_reward_ratio: 1.8
+  
+  # New filters from TradingView
+  fvg_bull: true
+  fvg_bear: true
+  big_candle_filter_x: 5
+  
+  # Stop Loss Strategy
+  stop_loss_type: "Pivot Point"  # Options: "Pivot Point", "ATR", "LL/HH"
+  
+  # Pivot Point SL Settings
+  risk_to_reward_pivot: 1.0
+  percent_atr_plus_lowest_highest_pct: 20
+  
+  # LL/HH SL Settings
+  risk_to_reward_ll_hh: 2.2
+  look_back_ll_hh: 10
+  
+  # ATR Settings
+  atr_length: 14
+  atr_smoothing: "RMA"
+  atr_type: "Normal"
+  stop_loss_atr_multiplier: 1.9
+  move_stop_loss_atr_multiplier: 2.5
+  
+risk_management:
+  max_risk_per_trade: 1.0
+  max_daily_risk: 3.0
+  max_open_positions: 1  # فقط یک معامله همزمان
+  use_trailing_stop: true
+  trailing_stop_activation: 50
+  trailing_stop_distance: 25
+
+logging:
+  level: "INFO"
+  file: "logs/trading.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+backtest:
+  start_date: "2026-01-04"
+  end_date: "2026-03-05"
+  initial_balance: 10000
+  commission: 0.0
+  slippage: 1

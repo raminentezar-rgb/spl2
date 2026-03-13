@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+.vscode/
+.idea/
+
+# Trading Logs
+logs/
+*.log
+
+# Data
+data/
+*.csv
+*.json
+!config.json
+
+# Streamlit
+.streamlit/

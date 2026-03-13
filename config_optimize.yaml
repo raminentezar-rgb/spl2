@@ -1,0 +1,45 @@
+backtest:
+  commission: 0.0
+  end_date: '2026-03-05'
+  initial_balance: 10000
+  slippage: 1
+  start_date: '2026-01-04'
+logging:
+  file: logs/trading.log
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  level: INFO
+mt5:
+  login: ${MT5_LOGIN}
+  path: C:/Program Files/MetaTrader 5/terminal64.exe
+  server: ${MT5_SERVER}
+  timeout: 5000
+risk_management:
+  max_daily_risk: 3.0
+  max_open_positions: 1
+  max_risk_per_trade: 1.0
+  trailing_stop_activation: 50
+  trailing_stop_distance: 25
+  use_trailing_stop: true
+strategy:
+  atr_length: 14
+  atr_smoothing: RMA
+  atr_type: Normal
+  big_candle_filter_x: 5
+  fvg_bear: true
+  fvg_bull: true
+  look_back_ll_hh: 10
+  ma_period: 60
+  min_higher_lows: 4
+  move_stop_loss_atr_multiplier: 2.5
+  percent_atr_plus_lowest_highest_pct: 20
+  pullback_threshold: 0.001
+  risk_reward_ratio: 2.5
+  risk_to_reward_ll_hh: 2.2
+  risk_to_reward_pivot: 1.0
+  stop_loss_atr_multiplier: 1.9
+  stop_loss_type: Pivot Point
+trading:
+  magic_number: 234000
+  symbol: XAUUSD
+  timeframe: M5
+  volume: 0.01

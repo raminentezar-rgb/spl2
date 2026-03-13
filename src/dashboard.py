@@ -1,0 +1,156 @@
+"""
+Streamlit Dashboard for SP2L Trading Robot
+"""
+import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime
+import time
+import os
+import sys
+from pathlib import Path
+
+# اضافه کردن مسیر پروژه به PYTHONPATH برای حل مشکل ModuleNotFoundError
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import yaml
+
+from src.mt5_connector.connector import MT5Connector
+from src.core.strategy import SP2LStrategy
+from src.utils.helpers import load_config
+from src.utils.yfinance_connector import YahooFinanceConnector
+
+# پیکربندی صفحه
+st.set_page_config(
+    page_title="SP2L Trading Dashboard",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# بارگذاری تنظیمات
+def get_config():
+    return load_config("config.yaml")
+
+config = get_config()
+
+# استایل‌دهی
+st.markdown("""
+    <style>
+    .main {
+        background-color: #0e1117;
+        color: #ffffff;
+    }
+    .stMetric {
+        background-color: #1e2130;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #3e4250;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# سایدبار
+st.sidebar.title("🛠️ Control Panel")
+data_source = st.sidebar.radio("Data Source", ["Yahoo Finance", "MetaTrader 5"])
+symbol = st.sidebar.selectbox("Symbol", [config['trading']['symbol'], "EURUSD", "GBPUSD", "BTCUSD"])
+timeframe = st.sidebar.selectbox("Timeframe", ["M1", "M5", "M15", "M30", "H1", "H4", "D1"], index=1)
+update_interval = st.sidebar.slider("Update Interval (sec)", 5, 60, 15)
+
+# مقداردهی اولیه کانکتورها
+if 'mt5' not in st.session_state:
+    st.session_state.mt5 = MT5Connector(config)
+    st.session_state.mt5.connect()
+if 'yahoo' not in st.session_state:
+    st.session_state.yahoo = YahooFinanceConnector()
+
+# انتخاب کانکتور فعلی
+connector = st.session_state.mt5 if data_source == "MetaTrader 5" else st.session_state.yahoo
+
+# هدر اصلی
+st.title("🚀 SP2L Signal Robot")
+st.subheader(f"Data: {data_source} | Symbol: {symbol} ({timeframe})")
+
+# اگر متاتریدر انتخاب شده، اطلاعات حساب را نشان بده
+if data_source == "MetaTrader 5":
+    col1, col2, col3, col4 = st.columns(4)
+    account_info = connector.get_account_info()
+    if account_info:
+        col1.metric("Balance", f"${account_info['balance']:.2f}")
+        col2.metric("Equity", f"${account_info['equity']:.2f}")
+        col3.metric("Free Margin", f"${account_info['free_margin']:.2f}")
+        profit_color = "normal" if account_info['profit'] >= 0 else "inverse"
+        col4.metric("Live Profit", f"${account_info['profit']:.2f}", delta_color=profit_color)
+    else:
+        st.warning("⚠️ MT5 disconnected. Showing market data only.")
+else:
+    st.info("💡 Running in Signal-Only Mode using Yahoo Finance (No Account Connection Required)")
+
+# دریافت داده‌ها و تحلیل
+data = connector.get_rates(symbol, timeframe, count=200)
+
+if data is not None:
+    strategy = SP2LStrategy(config)
+    analysis = strategy.analyze(data)
+    
+    # نمودار شمعی
+    fig = go.Figure(data=[go.Candlestick(x=data.index,
+                    open=data['open'],
+                    high=data['high'],
+                    low=data['low'],
+                    close=data['close'],
+                    name="Market Data")])
+    
+    # اضافه کردن میانگین متحرک
+    ma_period = config['strategy'].get('ma_period', 60)
+    ma_values = data['close'].rolling(window=ma_period).mean()
+    fig.add_trace(go.Scatter(x=data.index, y=ma_values, line=dict(color='yellow', width=1.5), name=f"EMA {ma_period}"))
+    
+    # نمایش سیگنال فعلی
+    signal = analysis['signal']
+    if signal['type'] != 'neutral':
+        st.sidebar.success(f"🔥 ACTIVE SIGNAL: {signal['type'].upper()} @ {signal['entry']:.5f}")
+        
+        # علامت‌گذاری روی نمودار
+        color = "green" if signal['type'] == 'buy' else "red"
+        symbol_marker = "triangle-up" if signal['type'] == 'buy' else "triangle-down"
+        
+        fig.add_trace(go.Scatter(
+            x=[data.index[-1]],
+            y=[signal['entry']],
+            mode="markers",
+            marker=dict(symbol=symbol_marker, size=15, color=color, line=dict(width=2, color="white")),
+            name=f"Signal: {signal['type'].upper()}"
+        ))
+        
+        # خطوط SL و TP
+        fig.add_hline(y=signal['sl'], line_dash="dash", line_color="red", annotation_text="SL")
+        fig.add_hline(y=signal['tp'], line_dash="dash", line_color="green", annotation_text="TP")
+
+    fig.update_layout(
+        template="plotly_dark",
+        xaxis_rangeslider_visible=False,
+        height=600,
+        margin=dict(l=10, r=10, t=10, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # نمایش پوزیشن‌ها (فقط برای متاتریدر)
+if data_source == "MetaTrader 5":
+    st.markdown("---")
+    st.subheader("💼 Active Positions")
+    positions = connector.get_positions(symbol)
+    if positions:
+        df_pos = pd.DataFrame(positions)
+        st.dataframe(df_pos, use_container_width=True)
+    else:
+        st.info("No active positions.")
+    # وضعیت استراتژی
+    with st.expander("🔍 Strategy Technical Details"):
+        st.write(analysis)
+
+# رفرش خودکار
+time.sleep(update_interval)
+st.rerun()

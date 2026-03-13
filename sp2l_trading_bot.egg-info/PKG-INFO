@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: sp2l_trading_bot
+Version: 1.0.0
+Requires-Dist: MetaTrader5
+Requires-Dist: pandas
+Requires-Dist: numpy
+Requires-Dist: TA-Lib
+Requires-Dist: pyyaml
+Requires-Dist: python-dotenv
+Requires-Dist: schedule
+Dynamic: requires-dist
