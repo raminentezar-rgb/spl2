@@ -90,14 +90,6 @@ class MT5Connector:
     def get_rates(self, symbol: str, timeframe: str, count: int = 100) -> Optional[pd.DataFrame]:
         """
         دریافت داده‌های قیمتی
-        
-        Args:
-            symbol: نماد معاملاتی (مثلاً XAUUSD)
-            timeframe: تایم‌فریم (M1, M5, ...)
-            count: تعداد کندل‌ها
-            
-        Returns:
-            دیتافریم با OHLCV داده‌ها
         """
         if not MT5_AVAILABLE:
             self.logger.warning("MT5 library not available. Cannot fetch rates.")
@@ -143,7 +135,8 @@ class MT5Connector:
                 'profit': account.profit,
                 'leverage': account.leverage
             }
-        except:
+        except Exception as e:
+            self.logger.error(f"Error getting account info: {e}")
             return {}
     
     def get_positions(self, symbol: str = None) -> pd.DataFrame:
@@ -151,31 +144,42 @@ class MT5Connector:
         if not self.connected or not MT5_AVAILABLE:
             return pd.DataFrame()
         
-        if symbol:
-            positions = mt5.positions_get(symbol=symbol)
-        else:
-            positions = mt5.positions_get()
-        
-        if positions is None or len(positions) == 0:
+        try:
+            if symbol:
+                positions = mt5.positions_get(symbol=symbol)
+            else:
+                positions = mt5.positions_get()
+            
+            if positions is None or len(positions) == 0:
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(list(positions), columns=positions[0]._asdict().keys())
+            df['time'] = pd.to_datetime(df['time'], unit='s')
+            
+            return df
+        except Exception as e:
+            self.logger.error(f"Error getting positions: {e}")
             return pd.DataFrame()
-        
-        df = pd.DataFrame(list(positions), columns=positions[0]._asdict().keys())
-        df['time'] = pd.to_datetime(df['time'], unit='s')
-        
-        return df
     
     def get_symbol_info(self, symbol: str) -> Dict:
         """دریافت اطلاعات نماد"""
-        info = mt5.symbol_info(symbol)
-        if info is None:
+        if not MT5_AVAILABLE:
             return {}
-        
-        return {
-            'spread': info.spread,
-            'digits': info.digits,
-            'point': info.point,
-            'trade_mode': info.trade_mode,
-            'volume_min': info.volume_min,
-            'volume_max': info.volume_max,
-            'volume_step': info.volume_step
-        }
+            
+        try:
+            info = mt5.symbol_info(symbol)
+            if info is None:
+                return {}
+            
+            return {
+                'spread': info.spread,
+                'digits': info.digits,
+                'point': info.point,
+                'trade_mode': info.trade_mode,
+                'volume_min': info.volume_min,
+                'volume_max': info.volume_max,
+                'volume_step': info.volume_step
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting symbol info: {e}")
+            return {}
