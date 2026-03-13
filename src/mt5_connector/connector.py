@@ -1,7 +1,10 @@
-"""
-مدیریت اتصال به متاتریدر 5
-"""
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+    MT5_AVAILABLE = True
+except ImportError:
+    mt5 = None
+    MT5_AVAILABLE = False
+
 import pandas as pd
 from typing import Optional, Dict
 from datetime import datetime
@@ -17,20 +20,28 @@ class MT5Connector:
         self.config = config
         self.logger = setup_logger(__name__)
         self.connected = False
-        self.timeframe_map = {
-            'M1': mt5.TIMEFRAME_M1,
-            'M5': mt5.TIMEFRAME_M5,
-            'M15': mt5.TIMEFRAME_M15,
-            'M30': mt5.TIMEFRAME_M30,
-            'H1': mt5.TIMEFRAME_H1,
-            'H4': mt5.TIMEFRAME_H4,
-            'D1': mt5.TIMEFRAME_D1
-        }
+        
+        if MT5_AVAILABLE:
+            self.timeframe_map = {
+                'M1': mt5.TIMEFRAME_M1,
+                'M5': mt5.TIMEFRAME_M5,
+                'M15': mt5.TIMEFRAME_M15,
+                'M30': mt5.TIMEFRAME_M30,
+                'H1': mt5.TIMEFRAME_H1,
+                'H4': mt5.TIMEFRAME_H4,
+                'D1': mt5.TIMEFRAME_D1
+            }
+        else:
+            self.timeframe_map = {}
     
     def connect(self) -> bool:
         """
         اتصال به متاتریدر 5
         """
+        if not MT5_AVAILABLE:
+            self.logger.error("MetaTrader5 library not available on this system.")
+            return False
+            
         try:
             # سعی برای اتصال با مسیر مشخص شده در تنظیمات
             path = self.config['mt5'].get('path')
@@ -71,7 +82,7 @@ class MT5Connector:
     
     def disconnect(self):
         """قطع اتصال"""
-        if self.connected:
+        if self.connected and MT5_AVAILABLE:
             mt5.shutdown()
             self.connected = False
             self.logger.info("MT5 disconnected")
@@ -88,6 +99,10 @@ class MT5Connector:
         Returns:
             دیتافریم با OHLCV داده‌ها
         """
+        if not MT5_AVAILABLE:
+            self.logger.warning("MT5 library not available. Cannot fetch rates.")
+            return None
+            
         try:
             tf = self.timeframe_map.get(timeframe, mt5.TIMEFRAME_M5)
             
@@ -112,25 +127,28 @@ class MT5Connector:
     
     def get_account_info(self) -> Dict:
         """دریافت اطلاعات حساب"""
-        if not self.connected:
+        if not self.connected or not MT5_AVAILABLE:
             return {}
         
-        account = mt5.account_info()
-        if account is None:
+        try:
+            account = mt5.account_info()
+            if account is None:
+                return {}
+            
+            return {
+                'balance': account.balance,
+                'equity': account.equity,
+                'margin': account.margin,
+                'free_margin': account.margin_free,
+                'profit': account.profit,
+                'leverage': account.leverage
+            }
+        except:
             return {}
-        
-        return {
-            'balance': account.balance,
-            'equity': account.equity,
-            'margin': account.margin,
-            'free_margin': account.margin_free,
-            'profit': account.profit,
-            'leverage': account.leverage
-        }
     
     def get_positions(self, symbol: str = None) -> pd.DataFrame:
         """دریافت پوزیشن‌های باز"""
-        if not self.connected:
+        if not self.connected or not MT5_AVAILABLE:
             return pd.DataFrame()
         
         if symbol:
@@ -138,7 +156,7 @@ class MT5Connector:
         else:
             positions = mt5.positions_get()
         
-        if positions is None:
+        if positions is None or len(positions) == 0:
             return pd.DataFrame()
         
         df = pd.DataFrame(list(positions), columns=positions[0]._asdict().keys())
