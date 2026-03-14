@@ -7,7 +7,7 @@ mt5:
   timeout: 5000
 
 trading:
-  symbol: "XAUUSD"
+  symbols: ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY", "EURGBP", "AUDUSD", "BTCUSD"]
   timeframe: "M5"
   volume: 0.01
   magic_number: 234000

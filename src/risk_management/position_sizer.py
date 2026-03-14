@@ -145,8 +145,14 @@ class PositionSizer:
                 # برای جفت‌ارزهای ینی
                 return 10 * (100 / price) if price > 0 else 10
             elif 'XAU' in symbol or 'GOLD' in symbol:
-                # برای طلا (هر پیپ 0.01 دلار برای هر اونس)
-                return 0.1 * volume  # تقریبی
+                # برای طلا
+                return 10.0
+            elif 'XAG' in symbol or 'SILVER' in symbol:
+                # برای نقره
+                return 50.0  # بر اساس مشخصات اکثر بروکرها
+            elif 'BTC' in symbol:
+                # برای بیت‌کوین
+                return 1.0
             else:
                 # برای بیشتر جفت‌ارزها
                 return 10  # هر پیپ 10 دلار برای 1 لات

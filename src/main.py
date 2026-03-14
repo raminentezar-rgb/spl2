@@ -32,7 +32,7 @@ class SP2LTradingBot:
         self.connector = None
         self.strategy = None
         self.order_manager = None
-        self.position_sizer = None
+        self.position_sizers = {}
         
         # وضعیت
         self.is_running = False
@@ -64,12 +64,16 @@ class SP2LTradingBot:
             # ۲. ایجاد استراتژی
             self.strategy = SP2LStrategy(self.config)
             
-            # ۳. آماده‌سازی مدیریت سفارش (فقط اگر مود ترید فعال باشد)
+            # ۳. آماده‌سازی مدیریت سفارش (فلط اگر مود ترید فعال باشد)
             self.signal_only = self.config['trading'].get('signal_only', True)
             if not self.signal_only and self.data_source == 'mt5':
-                symbol_info = self.connector.get_symbol_info(self.config['trading']['symbol'])
                 self.order_manager = OrderManager(self.connector, self.config)
-                self.position_sizer = PositionSizer(self.config, symbol_info)
+                for symbol in self.config['trading'].get('symbols', []):
+                    symbol_info = self.connector.get_symbol_info(symbol)
+                    if symbol_info:
+                        self.position_sizers[symbol] = PositionSizer(self.config, symbol_info)
+                    else:
+                        self.logger.warning(f"Could not get symbol info for {symbol}")
             
             self.logger.info(f"Bot initialized in {self.data_source} mode (Signal Only: {self.signal_only})")
             return True
@@ -103,54 +107,63 @@ class SP2LTradingBot:
     
     def check_and_trade(self):
         """
-        بررسی بازار و انجام معامله
+        بررسی بازار و انجام معامله برای تمام ارزها
         """
         try:
-            # 1. دریافت داده‌های جدید
-            symbol = self.config['trading']['symbol']
+            symbols = self.config['trading'].get('symbols', [])
             timeframe = self.config['trading']['timeframe']
             
-            if self.data_source == 'mt5':
-                data = self.connector.get_rates(symbol, timeframe, count=100)
-            else:
-                data = self.yahoo_connector.get_rates(symbol, timeframe, count=100)
-            
-            if data is None or len(data) < 60:
-                self.logger.warning(f"Insufficient data from {self.data_source}")
-                return
-            
-            # 2. تحلیل با استراتژی
-            analysis = self.strategy.analyze(data)
-            self.last_signal = analysis
-            
-            # 3. بررسی و اعلام سیگنال
-            if analysis['signal']['type'] != 'neutral':
-                # ارسال به تلگرام (همیشه انجام می‌شود)
-                self.telegram.send_signal(
-                    symbol=symbol,
-                    signal_type=analysis['signal']['type'],
-                    entry=analysis['signal']['entry'],
-                    sl=analysis['signal']['sl'],
-                    tp=analysis['signal']['tp']
-                )
+            for symbol in symbols:
+                # 1. دریافت داده‌های جدید
+                if self.data_source == 'mt5':
+                    data = self.connector.get_rates(symbol, timeframe, count=100)
+                else:
+                    data = self.yahoo_connector.get_rates(symbol, timeframe, count=100)
                 
-                # اجرای معامله (فقط اگر سیگنال‌اونلی نباشد)
-                if not self.signal_only and self.data_source == 'mt5':
-                    account = self.connector.get_account_info()
-                    positions = self.connector.get_positions(symbol)
-                    self._execute_signal(analysis, account, positions)
+                if data is None or len(data) < 60:
+                    self.logger.warning(f"Insufficient data for {symbol} from {self.data_source}")
+                    continue
+                
+                # 2. تحلیل با استراتژی
+                analysis = self.strategy.analyze(data)
+                self.last_signal = analysis # ذخیره آخرین تحلیل برای مانیتورینگ عمومی
+                
+                # 3. بررسی و اعلام سیگنال
+                if analysis['signal']['type'] != 'neutral':
+                    self.logger.info(f"Signal detected for {symbol}: {analysis['signal']['type']}")
+                    
+                    # ارسال به تلگرام (همیشه انجام می‌شود)
+                    self.telegram.send_signal(
+                        symbol=symbol,
+                        signal_type=analysis['signal']['type'],
+                        entry=analysis['signal']['entry'],
+                        sl=analysis['signal']['sl'],
+                        tp=analysis['signal']['tp']
+                    )
+                    
+                    # اجرای معامله (فقط اگر سیگنال‌اونلی نباشد)
+                    if not self.signal_only and self.data_source == 'mt5':
+                        account = self.connector.get_account_info()
+                        positions = self.connector.get_positions(symbol)
+                        self._execute_signal(symbol, analysis, account, positions)
             
         except Exception as e:
             self.logger.error(f"Error in check_and_trade: {e}")
     
-    def _execute_signal(self, analysis, account, positions):
+    def _execute_signal(self, symbol, analysis, account, positions):
         """
         اجرای سیگنال معاملاتی
         """
         signal = analysis['signal']
         
+        # دریافت سایزر مخصوص این نماد
+        sizer = self.position_sizers.get(symbol)
+        if not sizer:
+            self.logger.error(f"No position sizer found for {symbol}")
+            return
+            
         # محاسبه حجم معامله
-        volume = self.position_sizer.calculate_position_size(
+        volume = sizer.calculate_position_size(
             account['balance'],
             signal['entry'],
             signal['sl'],
@@ -158,37 +171,33 @@ class SP2LTradingBot:
         )
         
         # اجرای معامله
+        result = None
         if signal['type'] == 'buy':
             result = self.order_manager.place_buy_order(
-                symbol=self.config['trading']['symbol'],
+                symbol=symbol,
                 volume=volume,
                 sl=signal['sl'],
                 tp=signal['tp'],
-                comment="SP2L Buy Signal"
+                comment=f"SP2L Buy Signal {symbol}"
             )
             
         elif signal['type'] == 'sell':
             result = self.order_manager.place_sell_order(
-                symbol=self.config['trading']['symbol'],
+                symbol=symbol,
                 volume=volume,
                 sl=signal['sl'],
                 tp=signal['tp'],
-                comment="SP2L Sell Signal"
+                comment=f"SP2L Sell Signal {symbol}"
             )
         
-        if result:
-            self.logger.info(f"Order executed: {signal['type']} at {signal['entry']}")
-            # ارسال نوتیفیکیشن تلگرام
-            self.telegram.send_signal(
-                symbol=self.config['trading']['symbol'],
-                signal_type=signal['type'],
-                entry=signal['entry'],
-                sl=signal['sl'],
-                tp=signal['tp']
-            )
+        if result and result.get('success'):
+            self.logger.info(f"Order executed: {symbol} {signal['type']} at {signal['entry']}")
+            # تاییدیه در تلگرام
+            self.telegram.send_message(f"✅ <b>ORDER EXECUTED</b>\nSymbol: {symbol}\nType: {signal['type']}\nVolume: {volume}\nEntry: {signal['entry']}")
         else:
-            self.logger.error(f"Order failed: {signal['type']}")
-            self.telegram.send_message(f"❌ <b>FAILED</b> to place {signal['type']} order for {self.config['trading']['symbol']}")
+            error_msg = result.get('error') if result else "Unknown error"
+            self.logger.error(f"Order failed for {symbol}: {error_msg}")
+            self.telegram.send_message(f"❌ <b>FAILED</b> to place {signal['type']} order for {symbol}\nError: {error_msg}")
     
     def shutdown(self):
         """

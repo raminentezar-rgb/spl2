@@ -53,9 +53,10 @@ st.markdown("""
 # سایدبار
 st.sidebar.title("🛠️ Control Panel")
 data_source = st.sidebar.radio("Data Source", ["Yahoo Finance", "MetaTrader 5"])
-symbol = st.sidebar.selectbox("Symbol", [config['trading']['symbol'], "EURUSD", "GBPUSD", "BTCUSD"])
+symbols = config['trading'].get('symbols', [config['trading'].get('symbol', 'XAUUSD')])
+symbol = st.sidebar.selectbox("Symbol", symbols)
 timeframe = st.sidebar.selectbox("Timeframe", ["M1", "M5", "M15", "M30", "H1", "H4", "D1"], index=1)
-update_interval = st.sidebar.slider("Update Interval (sec)", 5, 60, 15)
+update_interval = st.sidebar.slider("Update Interval (sec)", 5, 60, 30)
 
 # مقداردهی اولیه کانکتورها
 if 'mt5' not in st.session_state:
@@ -86,11 +87,29 @@ if data_source == "MetaTrader 5":
 else:
     st.info("💡 Running in Signal-Only Mode using Yahoo Finance (No Account Connection Required)")
 
-# دریافت داده‌ها و تحلیل
+# بخش خلاصه سیگنال‌ها (جدید)
+st.markdown("### 📊 Market Overview & Signals")
+summary_cols = st.columns(len(symbols))
+strategy = SP2LStrategy(config)
+
+for i, s in enumerate(symbols):
+    s_data = connector.get_rates(s, timeframe, count=70)
+    if s_data is not None:
+        s_analysis = strategy.analyze(s_data)
+        s_signal = s_analysis['signal']
+        
+        with summary_cols[i]:
+            if s_signal['type'] == 'buy':
+                st.markdown(f"**{s}**\n🟢 BUY")
+            elif s_signal['type'] == 'sell':
+                st.markdown(f"**{s}**\n🔴 SELL")
+            else:
+                st.markdown(f"**{s}**\n⚪ Neutral")
+
+# دریافت داده‌ها برای نماد انتخابی
 data = connector.get_rates(symbol, timeframe, count=200)
 
 if data is not None:
-    strategy = SP2LStrategy(config)
     analysis = strategy.analyze(data)
     
     # نمودار شمعی
