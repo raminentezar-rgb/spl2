@@ -43,8 +43,8 @@ class SP2LStrategy:
         self.big_candle_filter = BigCandleFilter(config.get('strategy', {}).get('big_candle_filter_x', 5))
         
         # پارامترها
-        self.symbol = config['trading']['symbol']
-        self.timeframe = config['trading']['timeframe']
+        self.symbol = config.get('trading', {}).get('symbol', 'XAUUSD')
+        self.timeframe = config.get('trading', {}).get('timeframe', 'M5')
         self.min_higher_lows = config['strategy']['min_higher_lows']
         
     def analyze(self, data: pd.DataFrame) -> Dict:
