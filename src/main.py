@@ -7,7 +7,8 @@ import yaml
 import schedule
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
+from concurrent.futures import ThreadPoolExecutor
 
 from src.core.strategy import SP2LStrategy
 from src.mt5_connector.connector import MT5Connector
@@ -107,48 +108,60 @@ class SP2LTradingBot:
     
     def check_and_trade(self):
         """
-        بررسی بازار و انجام معامله برای تمام ارزها
+        بررسی بازار و انجام معامله برای تمام ارزها (اجرای موازی)
         """
         try:
             symbols = self.config['trading'].get('symbols', [])
-            timeframe = self.config['trading']['timeframe']
             
-            for symbol in symbols:
-                # 1. دریافت داده‌های جدید
-                if self.data_source == 'mt5':
-                    data = self.connector.get_rates(symbol, timeframe, count=100)
-                else:
-                    data = self.yahoo_connector.get_rates(symbol, timeframe, count=100)
-                
-                if data is None or len(data) < 60:
-                    self.logger.warning(f"Insufficient data for {symbol} from {self.data_source}")
-                    continue
-                
-                # 2. تحلیل با استراتژی
-                analysis = self.strategy.analyze(data)
-                self.last_signal = analysis # ذخیره آخرین تحلیل برای مانیتورینگ عمومی
-                
-                # 3. بررسی و اعلام سیگنال
-                if analysis['signal']['type'] != 'neutral':
-                    self.logger.info(f"Signal detected for {symbol}: {analysis['signal']['type']}")
-                    
-                    # ارسال به تلگرام (همیشه انجام می‌شود)
-                    self.telegram.send_signal(
-                        symbol=symbol,
-                        signal_type=analysis['signal']['type'],
-                        entry=analysis['signal']['entry'],
-                        sl=analysis['signal']['sl'],
-                        tp=analysis['signal']['tp']
-                    )
-                    
-                    # اجرای معامله (فقط اگر سیگنال‌اونلی نباشد)
-                    if not self.signal_only and self.data_source == 'mt5':
-                        account = self.connector.get_account_info()
-                        positions = self.connector.get_positions(symbol)
-                        self._execute_signal(symbol, analysis, account, positions)
+            # اجرای موازی تحلیل و معامله برای هر نماد
+            with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
+                executor.map(self._process_single_symbol, symbols)
             
         except Exception as e:
             self.logger.error(f"Error in check_and_trade: {e}")
+
+    def _process_single_symbol(self, symbol: str):
+        """
+        پردازش یک نماد خاص: دریافت داده، تحلیل و معامله
+        """
+        try:
+            timeframe = self.config['trading']['timeframe']
+            
+            # 1. دریافت داده‌های جدید
+            if self.data_source == 'mt5':
+                data = self.connector.get_rates(symbol, timeframe, count=100)
+            else:
+                data = self.yahoo_connector.get_rates(symbol, timeframe, count=100)
+            
+            if data is None or len(data) < 60:
+                self.logger.warning(f"Insufficient data for {symbol} from {self.data_source}")
+                return
+            
+            # 2. تحلیل با استراتژی
+            analysis = self.strategy.analyze(data)
+            self.last_signal = analysis
+            
+            # 3. بررسی و اعلام سیگنال
+            if analysis['signal']['type'] != 'neutral':
+                self.logger.info(f"Signal detected for {symbol}: {analysis['signal']['type']}")
+                
+                # ارسال به تلگرام
+                self.telegram.send_signal(
+                    symbol=symbol,
+                    signal_type=analysis['signal']['type'],
+                    entry=analysis['signal']['entry'],
+                    sl=analysis['signal']['sl'],
+                    tp=analysis['signal']['tp']
+                )
+                
+                # اجرای معامله
+                if not self.signal_only and self.data_source == 'mt5':
+                    account = self.connector.get_account_info()
+                    positions = self.connector.get_positions(symbol)
+                    self._execute_signal(symbol, analysis, account, positions)
+                    
+        except Exception as e:
+            self.logger.error(f"Error processing {symbol}: {e}")
     
     def _execute_signal(self, symbol, analysis, account, positions):
         """

@@ -9,6 +9,7 @@ import time
 import os
 import sys
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 # اضافه کردن مسیر پروژه به PYTHONPATH برای حل مشکل ModuleNotFoundError
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -29,8 +30,17 @@ st.set_page_config(
 )
 
 # بارگذاری تنظیمات
+@st.cache_data(ttl=600)
 def get_config():
     return load_config("config.yaml")
+
+# تابع کش شده برای تحلیل (برای جلوگیری از تکرار محاسبات سنگین)
+@st.cache_data(ttl=30)
+def cached_analysis(symbol, timeframe, _connector, _strategy):
+    data = _connector.get_rates(symbol, timeframe, count=200)
+    if data is not None:
+        return _strategy.analyze(data), data
+    return None, None
 
 config = get_config()
 
@@ -87,31 +97,36 @@ if data_source == "MetaTrader 5":
 else:
     st.info("💡 Running in Signal-Only Mode using Yahoo Finance (No Account Connection Required)")
 
-# بخش خلاصه سیگنال‌ها (جدید)
+# بخش خلاصه سیگنال‌ها (بهینه شده با اجرای موازی)
 st.markdown("### 📊 Market Overview & Signals")
 summary_cols = st.columns(len(symbols))
 strategy = SP2LStrategy(config)
 
-for i, s in enumerate(symbols):
+def process_symbol_summary(s):
+    # دریافت داده با تعداد کمتر برای سرعت بیشتر در خلاصه
     s_data = connector.get_rates(s, timeframe, count=70)
     if s_data is not None:
         s_analysis = strategy.analyze(s_data)
-        s_signal = s_analysis['signal']
-        
-        with summary_cols[i]:
-            if s_signal['type'] == 'buy':
-                st.markdown(f"**{s}**\n🟢 BUY")
-            elif s_signal['type'] == 'sell':
-                st.markdown(f"**{s}**\n🔴 SELL")
-            else:
-                st.markdown(f"**{s}**\n⚪ Neutral")
+        return s, s_analysis['signal']['type']
+    return s, 'neutral'
 
-# دریافت داده‌ها برای نماد انتخابی
-data = connector.get_rates(symbol, timeframe, count=200)
+# اجرای موازی برای تمام نمادها
+with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
+    results = list(executor.map(process_symbol_summary, symbols))
+
+for i, (s, sig_type) in enumerate(results):
+    with summary_cols[i]:
+        if sig_type == 'buy':
+            st.markdown(f"**{s}**\n🟢 BUY")
+        elif sig_type == 'sell':
+            st.markdown(f"**{s}**\n🔴 SELL")
+        else:
+            st.markdown(f"**{s}**\n⚪ Neutral")
+
+# دریافت داده اصلی برای نماد انتخابی (با استفاده از کش برای سرعت)
+analysis, data = cached_analysis(symbol, timeframe, connector, strategy)
 
 if data is not None:
-    analysis = strategy.analyze(data)
-    
     # نمودار شمعی
     fig = go.Figure(data=[go.Candlestick(x=data.index,
                     open=data['open'],

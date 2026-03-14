@@ -169,56 +169,69 @@ class SP2LStrategy:
         return {'type': 'neutral'}
     
     def _find_recent_spike(self, data: pd.DataFrame, direction: str) -> Tuple[bool, int, float, float]:
-        """جستجوی بهینه اسپایک در کندل‌های اخیر (حداکثر 60 کندل قبل - 5 ساعت در M5)"""
+        """جستجوی بهینه اسپایک در کندل‌های اخیر (بدون لوپ سنگین)"""
         if len(data) < 70:
             return False, 0, 0.0, 0.0
             
-        # محدوده جستجو (Lookback)
         lookback = 60
+        min_bars = self.min_higher_lows
         
-        # برای بهینه‌سازی، اول چک می‌کنیم آیا اصلاً اسپایکی در این حوالی بوده یا نه
-        # به جای لوپ کامل سنگین، از تشخیص سریع استفاده می‌کنیم
-        for i in range(1, lookback + 1):
-            # بررسی بازه زمانی i کندل قبل
-            idx = len(data) - i
-            historical_data = data.iloc[:idx]
-            if len(historical_data) < 10: break
-            
-            # فقط بخش‌های ضروری از دیتا رو می‌فرستیم برای سرعت بیشتر
-            spike = self.spike_detector.detect(historical_data)
-            
-            if spike.get('has_spike', False) and spike.get('spike_type') == direction:
-                # اگر اسپایک پیدا شد، جزئیات روند رو چک می‌کنیم
-                trend = self.trend_analyzer.analyze(historical_data)
-                
-                if direction == 'bullish':
-                    higher_lows_count = trend.get('higher_lows', 0)
-                    if higher_lows_count >= self.min_higher_lows and (spike.get('breakout', {}).get('detected', False) or spike.get('gap', {}).get('detected', False)):
-                        # پیداکردن ریشه اسپایک
-                        start_idx = max(0, len(historical_data) - higher_lows_count - 3)
-                        base_price = historical_data['low'].iloc[start_idx:].min()
-                        peak_price = historical_data['high'].iloc[-1]
+        # استخراج داده‌های مورد نیاز به صورت آرایه برای سرعت بیشتر
+        recent_data = data.iloc[-(lookback + 20):]
+        lows = recent_data['low'].values
+        highs = recent_data['high'].values
+        closes = recent_data['close'].values
+        
+        # پیدا کردن کاندیداهای اسپایک (جایی که N تا کف بالاتر یا سقف پایین‌تر متوالی داریم)
+        if direction == 'bullish':
+            # پیدا کردن آخرین جایی که N کف بالاتر متوالی داشتیم
+            diffs = np.diff(lows) > 0
+            for i in range(len(diffs) - 1, min_bars - 1, -1):
+                # اگر i-min_bars تا i همگی True بودند
+                if all(diffs[i-min_bars+1:i+1]):
+                    # یک کاندیدای اسپایک پیدا شد
+                    idx_in_recent = i + 1
+                    actual_idx = len(data) - (len(lows) - idx_in_recent)
+                    
+                    # بررسی شکست یا گپ در این نقطه (فقط یک بار تحلیل فراخوانی می‌شود)
+                    historical_data = data.iloc[:actual_idx]
+                    spike = self.spike_detector.detect(historical_data)
+                    
+                    if spike.get('has_spike') and spike.get('spike_type') == 'bullish':
+                        trend = self.trend_analyzer.analyze(historical_data)
+                        higher_lows_count = trend.get('higher_lows', 0)
                         
-                        # بررسی باطل شدن (شکست ریشه در فاصله بین اسپایک تا الان)
-                        recent_low = data['low'].iloc[idx:].min()
-                        if recent_low < base_price:
-                            continue 
+                        if higher_lows_count >= min_bars:
+                            start_idx = max(0, actual_idx - higher_lows_count - 3)
+                            base_price = data['low'].iloc[start_idx:actual_idx].min()
                             
-                        return True, higher_lows_count, float(base_price), float(peak_price)
-                
-                elif direction == 'bearish':
-                    lower_highs_count = trend.get('lower_highs', 0)
-                    if lower_highs_count >= self.min_higher_lows and (spike.get('breakout', {}).get('detected', False) or spike.get('gap', {}).get('detected', False)):
-                        start_idx = max(0, len(historical_data) - lower_highs_count - 3)
-                        base_price = historical_data['high'].iloc[start_idx:].max()
-                        peak_price = historical_data['low'].iloc[-1]
-                        
-                        recent_high = data['high'].iloc[idx:].max()
-                        if recent_high > base_price:
-                            continue
-                            
-                        return True, lower_highs_count, float(base_price), float(peak_price)
+                            # آیا اسپایک باطل شده؟
+                            recent_low = data['low'].iloc[actual_idx:].min()
+                            if recent_low >= base_price:
+                                return True, higher_lows_count, float(base_price), float(data['high'].iloc[actual_idx-1])
             
+        elif direction == 'bearish':
+            diffs = np.diff(highs) < 0
+            for i in range(len(diffs) - 1, min_bars - 1, -1):
+                if all(diffs[i-min_bars+1:i+1]):
+                    idx_in_recent = i + 1
+                    actual_idx = len(data) - (len(highs) - idx_in_recent)
+                    
+                    historical_data = data.iloc[:actual_idx]
+                    spike = self.spike_detector.detect(historical_data)
+                    
+                    if spike.get('has_spike') and spike.get('spike_type') == 'bearish':
+                        trend = self.trend_analyzer.analyze(historical_data)
+                        lower_highs_count = trend.get('lower_highs', 0)
+                        
+                        if lower_highs_count >= min_bars:
+                            start_idx = max(0, actual_idx - lower_highs_count - 3)
+                            base_price = data['high'].iloc[start_idx:actual_idx].max()
+                            
+                            recent_high = data['high'].iloc[actual_idx:].max()
+                            if recent_high <= base_price:
+                                return True, lower_highs_count, float(base_price), float(data['low'].iloc[actual_idx-1])
+                                
         return False, 0, 0.0, 0.0
 
     def _calculate_stop_loss(self, data: pd.DataFrame, direction: str, base_price: float, pivots: Dict) -> float:
