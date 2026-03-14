@@ -13,12 +13,12 @@ class YahooFinanceConnector:
     
     def __init__(self):
         self.logger = setup_logger(__name__)
-        # مپ کردن نمادهای متاتریدر به یاهو (برای طلا GOLD -> GC=F یا XAUUSD=X)
+        # مپ کردن نمادهای متاتریدر به یاهو
         self.symbol_map = {
-            'XAUUSD': 'GC=F',
-            'EURUSD': 'EURUSD=X',
-            'GBPUSD': 'GBPUSD=X',
-            'BTCUSD': 'BTC-USD'
+            'XAUUSD': 'GC=F',    # Gold Futures
+            'XAGUSD': 'SI=F',    # Silver Futures
+            'BTCUSD': 'BTC-USD', # Bitcoin
+            'ETHUSD': 'ETH-USD', # Ethereum
         }
 
     def get_rates(self, symbol: str, timeframe: str, count: int = 100) -> pd.DataFrame:
@@ -26,7 +26,15 @@ class YahooFinanceConnector:
         دریافت داده‌های او‌اچ‌ال‌سی
         """
         try:
-            yf_symbol = self.symbol_map.get(symbol, symbol)
+            # ۱. ترجمه نماد
+            yf_symbol = self.symbol_map.get(symbol)
+            
+            # اگر در مپ نبود و شبیه فارکس بود (6 حرفی)، =X اضافه کن
+            if not yf_symbol:
+                if len(symbol) == 6 and not symbol.startswith('X'):
+                    yf_symbol = f"{symbol}=X"
+                else:
+                    yf_symbol = symbol
             
             # تبدیل تایم‌فریم متاتریدر به یاهو
             interval_map = {
