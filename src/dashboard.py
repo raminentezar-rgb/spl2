@@ -62,6 +62,8 @@ st.markdown("""
 
 # سایدبار
 st.sidebar.title("🛠️ Control Panel")
+st.sidebar.markdown("---")
+st.sidebar.caption("Software Version: v2.0 - Optimized")
 data_source = st.sidebar.radio("Data Source", ["Yahoo Finance", "MetaTrader 5"])
 symbols = config['trading'].get('symbols', [config['trading'].get('symbol', 'XAUUSD')])
 symbol = st.sidebar.selectbox("Symbol", symbols)
@@ -79,7 +81,7 @@ if 'yahoo' not in st.session_state:
 connector = st.session_state.mt5 if data_source == "MetaTrader 5" else st.session_state.yahoo
 
 # هدر اصلی
-st.title("🚀 SP2L Signal Robot")
+st.title("🚀 SP2L Signal Robot (v2.0)")
 
 # تعریف تب‌ها
 tab1, tab2 = st.tabs(["📊 Live Trading", "📰 Market News"])
