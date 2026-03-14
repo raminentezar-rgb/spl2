@@ -208,45 +208,61 @@ with tab2:
             if not news_items:
                 st.write("No recent news found.")
             for item in news_items:
-                # یاهو فایننس دیتا را در یک کلید content قرار می‌دهد
-                content = item.get('content', item) if isinstance(item, dict) else {}
-                
-                title = content.get('title') or content.get('heading') or item.get('title') or "No Title Available"
-                
-                # پیدا کردن لینک در جاهای مختلف احتمالی
-                link = "#"
-                if content.get('canonicalUrl'):
-                    link = content['canonicalUrl'].get('url')
-                elif content.get('clickThroughUrl'):
-                    link = content['clickThroughUrl'].get('url')
-                elif item.get('link'):
-                    link = item.get('link')
-                
-                # پیدا کردن ناشر
-                publisher = "Unknown Publisher"
-                provider = content.get('provider') or item.get('publisher')
-                if isinstance(provider, dict):
-                    publisher = provider.get('displayName') or provider.get('name') or "Unknown Publisher"
-                elif isinstance(provider, str):
-                    publisher = provider
-                
-                st.markdown(f"### [{title}]({link})")
-                st.caption(f"Source: {publisher}")
-                
-                # نمایش تصویر
-                thumbnail = content.get('thumbnail') or item.get('thumbnail')
-                if thumbnail and isinstance(thumbnail, dict):
-                    # تلاش برای پیدا کردن URL تصویر در رزولوشن‌ها یا اورجینال
-                    img_url = None
-                    res = thumbnail.get('resolutions')
-                    if res and len(res) > 0:
-                        img_url = res[0].get('url')
-                    elif thumbnail.get('originalUrl'):
-                        img_url = thumbnail.get('originalUrl')
+                # استخراج محتوا با ایمنی بالا
+                try:
+                    if isinstance(item, dict):
+                        content = item.get('content', {})
+                        if not content: content = item # اگر content نبود، خود آیتم را استفاده کن
+                    else:
+                        content = {}
+                    
+                    # استخراج تیتر
+                    title = content.get('title')
+                    if not title: title = content.get('heading')
+                    if not title: title = item.get('title')
+                    if not title: title = "No Title Available"
+                    
+                    # استخراج لینک
+                    link = "#"
+                    if content.get('canonicalUrl'):
+                        link = content['canonicalUrl'].get('url', "#")
+                    elif content.get('clickThroughUrl'):
+                        link = content['clickThroughUrl'].get('url', "#")
+                    elif isinstance(item, dict) and item.get('link'):
+                        link = item.get('link')
+                    
+                    # استخراج ناشر
+                    publisher = "Unknown Source"
+                    provider = content.get('provider') or (isinstance(item, dict) and item.get('publisher'))
+                    if isinstance(provider, dict):
+                        publisher = provider.get('displayName') or provider.get('name') or "Unknown Source"
+                    elif isinstance(provider, str):
+                        publisher = provider
+                    
+                    # نمایش در رابط کاربری
+                    st.markdown(f"### [{title}]({link})")
+                    st.caption(f"📍 Source: {publisher}")
+                    
+                    # نمایش تصویر
+                    thumbnail = content.get('thumbnail')
+                    if thumbnail and isinstance(thumbnail, dict):
+                        img_url = None
+                        res = thumbnail.get('resolutions')
+                        if res and len(res) > 0:
+                            img_url = res[0].get('url')
+                        elif thumbnail.get('originalUrl'):
+                            img_url = thumbnail.get('originalUrl')
+                            
+                        if img_url:
+                            st.image(img_url, width=300)
+                    
+                    # دکمه نمایش داده خام برای عیب‌یابی (مخفی در حالت عادی)
+                    with st.expander("🛠 News Debug (Raw Data)", expanded=False):
+                        st.json(item)
                         
-                    if img_url:
-                        st.image(img_url, width=200)
-                st.divider()
+                    st.divider()
+                except Exception as ex:
+                    st.error(f"Error parsing news item: {ex}")
 
 # رفرش خودکار
 time.sleep(update_interval)
