@@ -208,20 +208,44 @@ with tab2:
             if not news_items:
                 st.write("No recent news found.")
             for item in news_items:
-                title = item.get('title') or item.get('heading') or "No Title Available"
-                link = item.get('link') or item.get('url', '#')
-                publisher = item.get('publisher') or item.get('source', 'Unknown Publisher')
-                news_type = item.get('type') or "News"
+                # یاهو فایننس دیتا را در یک کلید content قرار می‌دهد
+                content = item.get('content', item) if isinstance(item, dict) else {}
+                
+                title = content.get('title') or content.get('heading') or item.get('title') or "No Title Available"
+                
+                # پیدا کردن لینک در جاهای مختلف احتمالی
+                link = "#"
+                if content.get('canonicalUrl'):
+                    link = content['canonicalUrl'].get('url')
+                elif content.get('clickThroughUrl'):
+                    link = content['clickThroughUrl'].get('url')
+                elif item.get('link'):
+                    link = item.get('link')
+                
+                # پیدا کردن ناشر
+                publisher = "Unknown Publisher"
+                provider = content.get('provider') or item.get('publisher')
+                if isinstance(provider, dict):
+                    publisher = provider.get('displayName') or provider.get('name') or "Unknown Publisher"
+                elif isinstance(provider, str):
+                    publisher = provider
                 
                 st.markdown(f"### [{title}]({link})")
-                st.caption(f"Source: {publisher} | Type: {news_type}")
+                st.caption(f"Source: {publisher}")
                 
-                # نمایش تصویر با چک کردن دقیق‌تر کلیدها
-                thumbnail = item.get('thumbnail')
+                # نمایش تصویر
+                thumbnail = content.get('thumbnail') or item.get('thumbnail')
                 if thumbnail and isinstance(thumbnail, dict):
+                    # تلاش برای پیدا کردن URL تصویر در رزولوشن‌ها یا اورجینال
+                    img_url = None
                     res = thumbnail.get('resolutions')
                     if res and len(res) > 0:
-                        st.image(res[0]['url'], width=200)
+                        img_url = res[0].get('url')
+                    elif thumbnail.get('originalUrl'):
+                        img_url = thumbnail.get('originalUrl')
+                        
+                    if img_url:
+                        st.image(img_url, width=200)
                 st.divider()
 
 # رفرش خودکار
