@@ -107,7 +107,7 @@ st.markdown("### 📊 Market Overview & Signals")
 summary_cols = st.columns(len(symbols))
 strategy = SP2LStrategy(config)
 
-def process_symbol_summary(s):
+def process_symbol_summary(s, connector):
     # دریافت داده با تعداد کمتر برای سرعت بیشتر در خلاصه
     s_data = connector.get_rates(s, timeframe, count=70)
     if s_data is not None:
@@ -117,7 +117,8 @@ def process_symbol_summary(s):
 
 # اجرای موازی برای تمام نمادها
 with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
-    results = list(executor.map(process_symbol_summary, symbols))
+    # ارسال کانکتور به تابع برای جلوگیری از مشکلات threading در دسترسی به session_state
+    results = list(executor.map(lambda s: process_symbol_summary(s, connector), symbols))
 
 for i, (s, sig_type) in enumerate(results):
     with summary_cols[i]:
