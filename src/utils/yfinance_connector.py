@@ -70,3 +70,16 @@ class YahooFinanceConnector:
         except Exception as e:
             self.logger.error(f"Error fetching from Yahoo Finance: {e}")
             return None
+
+    def get_news(self, symbol: str) -> list:
+        """
+        دریافت آخرین اخبار مربوط به نماد
+        """
+        try:
+            yf_symbol = self.symbol_map.get(symbol, symbol)
+            ticker = yf.Ticker(yf_symbol)
+            news = ticker.news
+            return news if news else []
+        except Exception as e:
+            self.logger.error(f"Error fetching news for {symbol}: {e}")
+            return []

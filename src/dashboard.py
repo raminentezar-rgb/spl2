@@ -80,7 +80,12 @@ connector = st.session_state.mt5 if data_source == "MetaTrader 5" else st.sessio
 
 # هدر اصلی
 st.title("🚀 SP2L Signal Robot")
-st.subheader(f"Data: {data_source} | Symbol: {symbol} ({timeframe})")
+
+# تعریف تب‌ها
+tab1, tab2 = st.tabs(["📊 Live Trading", "📰 Market News"])
+
+with tab1:
+    st.subheader(f"Data: {data_source} | Symbol: {symbol} ({timeframe})")
 
 # اگر متاتریدر انتخاب شده، اطلاعات حساب را نشان بده
 if data_source == "MetaTrader 5":
@@ -181,9 +186,30 @@ if data_source == "MetaTrader 5":
         st.dataframe(df_pos, use_container_width=True)
     else:
         st.info("No active positions.")
-    # وضعیت استراتژی
     with st.expander("🔍 Strategy Technical Details"):
         st.write(analysis)
+
+with tab2:
+    st.header("📰 Top Market News")
+    
+    # دریافت اخبار برای تمام ارزها به صورت موازی
+    def fetch_symbol_news(s):
+        return s, st.session_state.yahoo.get_news(s)
+    
+    with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
+        news_results = list(executor.map(fetch_symbol_news, symbols))
+    
+    for s, news_items in news_results:
+        with st.expander(f"News for {s} ({len(news_items)} items)"):
+            if not news_items:
+                st.write("No recent news found.")
+            for item in news_items:
+                st.markdown(f"### [{item.get('title')}]({item.get('link')})")
+                st.caption(f"Source: {item.get('publisher')} | Type: {item.get('type')}")
+                # اگر تصویر داشت (بعضی خبرها دارن)
+                if item.get('thumbnail') and item['thumbnail'].get('resolutions'):
+                    st.image(item['thumbnail']['resolutions'][0]['url'], width=200)
+                st.divider()
 
 # رفرش خودکار
 time.sleep(update_interval)
