@@ -208,11 +208,20 @@ with tab2:
             if not news_items:
                 st.write("No recent news found.")
             for item in news_items:
-                st.markdown(f"### [{item.get('title')}]({item.get('link')})")
-                st.caption(f"Source: {item.get('publisher')} | Type: {item.get('type')}")
-                # اگر تصویر داشت (بعضی خبرها دارن)
-                if item.get('thumbnail') and item['thumbnail'].get('resolutions'):
-                    st.image(item['thumbnail']['resolutions'][0]['url'], width=200)
+                title = item.get('title') or item.get('heading') or "No Title Available"
+                link = item.get('link') or item.get('url', '#')
+                publisher = item.get('publisher') or item.get('source', 'Unknown Publisher')
+                news_type = item.get('type') or "News"
+                
+                st.markdown(f"### [{title}]({link})")
+                st.caption(f"Source: {publisher} | Type: {news_type}")
+                
+                # نمایش تصویر با چک کردن دقیق‌تر کلیدها
+                thumbnail = item.get('thumbnail')
+                if thumbnail and isinstance(thumbnail, dict):
+                    res = thumbnail.get('resolutions')
+                    if res and len(res) > 0:
+                        st.image(res[0]['url'], width=200)
                 st.divider()
 
 # رفرش خودکار
