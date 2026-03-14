@@ -192,12 +192,15 @@ if data_source == "MetaTrader 5":
 with tab2:
     st.header("📰 Top Market News")
     
+    yahoo_conn = st.session_state.yahoo
+    
     # دریافت اخبار برای تمام ارزها به صورت موازی
-    def fetch_symbol_news(s):
-        return s, st.session_state.yahoo.get_news(s)
+    def fetch_symbol_news(s, connector):
+        return s, connector.get_news(s)
     
     with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
-        news_results = list(executor.map(fetch_symbol_news, symbols))
+        # استفاده از lambda یا functools.partial برای پاس دادن کانکتور
+        news_results = list(executor.map(lambda s: fetch_symbol_news(s, yahoo_conn), symbols))
     
     for s, news_items in news_results:
         with st.expander(f"News for {s} ({len(news_items)} items)"):
