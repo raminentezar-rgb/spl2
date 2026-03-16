@@ -8,7 +8,7 @@ mt5:
 
 trading:
   symbols: ["XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY", "EURGBP", "AUDUSD", "BTCUSD"]
-  timeframes: ["M1", "M5", "M15"]
+  timeframes: ["M1", "M5", "M15", "H1", "H4", "D1"]
   volume: 0.01
   magic_number: 234000
   data_source: "yahoo"  # Options: "mt5", "yahoo"
