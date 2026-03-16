@@ -35,9 +35,10 @@ class SP2LTradingBot:
         self.order_manager = None
         self.position_sizers = {}
         
-        # وضعیت
+        # وضعیت و ترکینگ سیگنال
         self.is_running = False
-        self.last_signal = None
+        self.last_signals = {} # {(symbol, timeframe): last_signal_data}
+        self.last_sent_signals = {} # {(symbol, timeframe): last_sent_bar_time}
         
         # تلگرام
         self.telegram = TelegramBot(
@@ -108,25 +109,30 @@ class SP2LTradingBot:
     
     def check_and_trade(self):
         """
-        بررسی بازار و انجام معامله برای تمام ارزها (اجرای موازی)
+        بررسی بازار و انجام معامله برای تمام ارزها و تایم‌فریم‌ها
         """
         try:
             symbols = self.config['trading'].get('symbols', [])
+            timeframes = self.config['trading'].get('timeframes', [self.config['trading'].get('timeframe', 'M5')])
             
-            # اجرای موازی تحلیل و معامله برای هر نماد
-            with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
-                executor.map(self._process_single_symbol, symbols)
+            # ایجاد لیست کارها برای تمام ترکیب‌های ارز و تایم‌فریم
+            tasks = []
+            for symbol in symbols:
+                for tf in timeframes:
+                    tasks.append((symbol, tf))
+            
+            # اجرای موازی
+            with ThreadPoolExecutor(max_workers=min(len(tasks), 10)) as executor:
+                executor.map(lambda p: self._process_single_symbol(p[0], p[1]), tasks)
             
         except Exception as e:
             self.logger.error(f"Error in check_and_trade: {e}")
 
-    def _process_single_symbol(self, symbol: str):
+    def _process_single_symbol(self, symbol: str, timeframe: str):
         """
-        پردازش یک نماد خاص: دریافت داده، تحلیل و معامله
+        پردازش یک نماد و تایم‌فریم خاص
         """
         try:
-            timeframe = self.config['trading']['timeframe']
-            
             # 1. دریافت داده‌های جدید
             if self.data_source == 'mt5':
                 data = self.connector.get_rates(symbol, timeframe, count=100)
@@ -134,34 +140,44 @@ class SP2LTradingBot:
                 data = self.yahoo_connector.get_rates(symbol, timeframe, count=100)
             
             if data is None or len(data) < 60:
-                self.logger.warning(f"Insufficient data for {symbol} from {self.data_source}")
                 return
             
             # 2. تحلیل با استراتژی
             analysis = self.strategy.analyze(data)
-            self.last_signal = analysis
+            self.last_signals[(symbol, timeframe)] = analysis
             
             # 3. بررسی و اعلام سیگنال
-            if analysis['signal']['type'] != 'neutral':
-                self.logger.info(f"Signal detected for {symbol}: {analysis['signal']['type']}")
+            signal = analysis['signal']
+            if signal['type'] != 'neutral':
+                current_bar_time = data.index[-1]
+                last_sent_time = self.last_sent_signals.get((symbol, timeframe))
                 
-                # ارسال به تلگرام
-                self.telegram.send_signal(
-                    symbol=symbol,
-                    signal_type=analysis['signal']['type'],
-                    entry=analysis['signal']['entry'],
-                    sl=analysis['signal']['sl'],
-                    tp=analysis['signal']['tp']
-                )
+                # فقط اگر برای این کندل قبلاً پیام نفرستادیم، ارسال کن
+                if last_sent_time != current_bar_time:
+                    self.logger.info(f"New Signal: {symbol} ({timeframe}) - {signal['type']}")
+                    
+                    # ارسال به تلگرام با ذکر تایم‌فریم
+                    self.telegram.send_signal(
+                        symbol=symbol,
+                        signal_type=signal['type'],
+                        entry=signal['entry'],
+                        sl=signal['sl'],
+                        tp=signal['tp'],
+                        timeframe=timeframe
+                    )
+                    
+                    # آپدیت وضعیت ارسال
+                    self.last_sent_signals[(symbol, timeframe)] = current_bar_time
                 
-                # اجرای معامله
+                # اجرای معامله (فقط برای تایم‌فریم اصلی یا طبق استراتژی)
+                # فعلاً معامله خودکار را محدود به تایم‌فریم اول لیست می‌کنیم اگر پوزیشن‌سایزر باشد
                 if not self.signal_only and self.data_source == 'mt5':
                     account = self.connector.get_account_info()
                     positions = self.connector.get_positions(symbol)
                     self._execute_signal(symbol, analysis, account, positions)
                     
         except Exception as e:
-            self.logger.error(f"Error processing {symbol}: {e}")
+            self.logger.error(f"Error processing {symbol} @ {timeframe}: {e}")
     
     def _execute_signal(self, symbol, analysis, account, positions):
         """

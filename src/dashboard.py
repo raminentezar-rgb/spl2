@@ -104,32 +104,41 @@ if data_source == "MetaTrader 5":
 else:
     st.info("💡 Running in Signal-Only Mode using Yahoo Finance (No Account Connection Required)")
 
-# بخش خلاصه سیگنال‌ها (بهینه شده با اجرای موازی)
-st.markdown("### 📊 Market Overview & Signals")
-summary_cols = st.columns(len(symbols))
+# بخش خلاصه سیگنال‌ها
+st.markdown("### 📊 Market Overview (Active Timeframes)")
 strategy = SP2LStrategy(config)
+active_timeframes = config['trading'].get('timeframes', [config['trading'].get('timeframe', 'M5')])
 
-def process_symbol_summary(s, connector):
-    # دریافت داده با تعداد کمتر برای سرعت بیشتر در خلاصه
-    s_data = connector.get_rates(s, timeframe, count=70)
+def process_symbol_tf_summary(s, tf, connector):
+    s_data = connector.get_rates(s, tf, count=70)
     if s_data is not None:
         s_analysis = strategy.analyze(s_data)
-        return s, s_analysis['signal']['type']
-    return s, 'neutral'
+        return s, tf, s_analysis['signal']['type']
+    return s, tf, 'neutral'
 
-# اجرای موازی برای تمام نمادها
-with ThreadPoolExecutor(max_workers=min(len(symbols), 8)) as executor:
-    # ارسال کانکتور به تابع برای جلوگیری از مشکلات threading در دسترسی به session_state
-    results = list(executor.map(lambda s: process_symbol_summary(s, connector), symbols))
+# ایجاد لیست تسک‌ها برای تمام ترکیب‌ها
+summary_tasks = []
+for s in symbols:
+    for tf in active_timeframes:
+        summary_tasks.append((s, tf))
 
-for i, (s, sig_type) in enumerate(results):
-    with summary_cols[i]:
+# اجرای موازی
+with ThreadPoolExecutor(max_workers=min(len(summary_tasks), 12)) as executor:
+    results = list(executor.map(lambda p: process_symbol_tf_summary(p[0], p[1], connector), summary_tasks))
+
+# نمایش به صورت گروه‌بندی شده
+for s in symbols:
+    s_results = [r for r in results if r[0] == s]
+    cols = st.columns([1] + [1] * len(active_timeframes))
+    cols[0].markdown(f"**{s}**")
+    for i, (symbol_name, tf_name, sig_type) in enumerate(s_results):
         if sig_type == 'buy':
-            st.markdown(f"**{s}**\n🟢 BUY")
+            cols[i+1].markdown(f"🟢 {tf_name}")
         elif sig_type == 'sell':
-            st.markdown(f"**{s}**\n🔴 SELL")
+            cols[i+1].markdown(f"🔴 {tf_name}")
         else:
-            st.markdown(f"**{s}**\n⚪ Neutral")
+            cols[i+1].markdown(f"⚪ {tf_name}")
+st.divider()
 
 # دریافت داده اصلی برای نماد انتخابی (با استفاده از کش برای سرعت)
 analysis, data = cached_analysis(symbol, timeframe, connector, strategy)

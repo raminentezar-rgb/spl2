@@ -41,7 +41,7 @@ class TelegramBot:
             logger.error(f"Error sending telegram message: {e}")
             return False
             
-    def send_signal(self, symbol: str, signal_type: str, entry: float, sl: float, tp: float):
+    def send_signal(self, symbol: str, signal_type: str, entry: float, sl: float, tp: float, timeframe: str = "N/A"):
         """ارسال سیگنال معاملاتی با فرمت زیبا"""
         emoji = "🚀" if signal_type == 'buy' else "📉"
         type_str = "BUY" if signal_type == 'buy' else "SELL"
@@ -49,6 +49,7 @@ class TelegramBot:
         message = (
             f"{emoji} <b>SP2L NEW SIGNAL</b> {emoji}\n\n"
             f"<b>Symbol:</b> {symbol}\n"
+            f"<b>Timeframe:</b> {timeframe}\n"
             f"<b>Type:</b> {type_str}\n"
             f"<b>Entry:</b> {entry:.5f}\n"
             f"<b>Stop Loss:</b> {sl:.5f}\n"
