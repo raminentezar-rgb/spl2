@@ -151,7 +151,7 @@ if data is not None:
     change = ((last_price - prev_close) / prev_close) * 100
     
     m_col1.metric("Current Price", f"{last_price:.2f}", f"{change:.2f}%")
-    m_col2.metric("EMA {config['strategy'].get('ma_period', 60)}", f"{analysis['ma']:.2f}")
+    m_col2.metric(f"EMA {config['strategy'].get('ma_period', 60)}", f"{analysis['ma']:.2f}")
     
     # نمایش ADX و قدرت روند
     adx_val = analysis.get('adx', 0)
