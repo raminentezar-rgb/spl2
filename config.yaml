@@ -25,6 +25,15 @@ strategy:
   fvg_bear: true
   big_candle_filter_x: 5
   
+  # Professional Filters (v3.0)
+  adx_filter: true
+  adx_threshold: 25   # Lower than 25 is weak trend
+  adx_period: 14
+  divergence_filter: true
+  rsi_period: 14
+  news_impact_filter: true
+  news_safety_buffer_mins: 30
+  
   # Stop Loss Strategy
   stop_loss_type: "Pivot Point"  # Options: "Pivot Point", "ATR", "LL/HH"
   

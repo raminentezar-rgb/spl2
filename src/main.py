@@ -142,6 +142,24 @@ class SP2LTradingBot:
             if data is None or len(data) < 60:
                 return
             
+            # 1.5 بررسی فیلتر اخبار (حرفه‌ای v3.0)
+            if self.config.get('strategy', {}).get('news_impact_filter', True):
+                news = self.yahoo_connector.get_news(symbol)
+                if news:
+                    import time
+                    safety_buffer_sec = self.config.get('strategy', {}).get('news_safety_buffer_mins', 30) * 60
+                    current_time_sec = time.time()
+                    
+                    for item in news:
+                        # دریافت زمان خبر (یاهو معمولاً providerPublishTime دارد)
+                        pub_time = item.get('providerPublishTime')
+                        if not pub_time and 'content' in item:
+                            pub_time = item['content'].get('pubDate') # گاهی در فرمت‌های دیگر
+                        
+                        if pub_time and (current_time_sec - pub_time) < safety_buffer_sec:
+                            self.logger.warning(f"⚠️ News Filter active for {symbol}: High-impact news detected. Skipping signals.")
+                            return # خروج از پردازش این نماد برای حفظ امنیت
+            
             # 2. تحلیل با استراتژی
             analysis = self.strategy.analyze(data)
             self.last_signals[(symbol, timeframe)] = analysis
@@ -156,15 +174,24 @@ class SP2LTradingBot:
                 if last_sent_time != current_bar_time:
                     self.logger.info(f"New Signal: {symbol} ({timeframe}) - {signal['type']}")
                     
-                    # ارسال به تلگرام با ذکر تایم‌فریم
-                    self.telegram.send_signal(
-                        symbol=symbol,
-                        signal_type=signal['type'],
-                        entry=signal['entry'],
-                        sl=signal['sl'],
-                        tp=signal['tp'],
-                        timeframe=timeframe
+                    # دریافت قدرت روند برای نوتیفیکیشن
+                    adx_val = analysis.get('adx', 0)
+                    adx_threshold = self.config.get('strategy', {}).get('adx_threshold', 25)
+                    trend_strength = "Strong 💪" if adx_val >= adx_threshold else "Weak 😴"
+                    
+                    # ارسال به تلگرام با ذکر تایم‌فریم و قدرت روند
+                    message = (
+                        f"🚀 <b>SP2L PROFESSIONAL SIGNAL</b> 🚀\n\n"
+                        f"<b>Symbol:</b> {symbol}\n"
+                        f"<b>Timeframe:</b> {timeframe}\n"
+                        f"<b>Type:</b> {signal['type'].upper()}\n"
+                        f"<b>Trend Strength:</b> {trend_strength} ({adx_val:.1f})\n"
+                        f"<b>Entry:</b> {signal['entry']:.5f}\n"
+                        f"<b>Stop Loss:</b> {signal['sl']:.5f}\n"
+                        f"<b>Take Profit:</b> {signal['tp']:.5f}\n\n"
+                        f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
                     )
+                    self.telegram.send_message(message)
                     
                     # آپدیت وضعیت ارسال
                     self.last_sent_signals[(symbol, timeframe)] = current_bar_time
