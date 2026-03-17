@@ -74,5 +74,5 @@ backtest:
   slippage: 1
 
 telegram:
-  token: "8133506408:AAFeS-14t8_STRATE_58O"
+  token: "8729090034:AAHUsKSw49XQai_SKSdP-P6c09-tEsf4avo"
   chat_id: "@signalspl2"
