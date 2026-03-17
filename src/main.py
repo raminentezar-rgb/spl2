@@ -5,8 +5,13 @@
 import time
 import yaml
 import schedule
+import sys
 from datetime import datetime
 from pathlib import Path
+
+# اضافه کردن مسیر پروژه به PYTHONPATH برای حل مشکل ModuleNotFoundError
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from typing import Dict, List
 from concurrent.futures import ThreadPoolExecutor
 
