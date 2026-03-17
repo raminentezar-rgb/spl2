@@ -145,13 +145,23 @@ analysis, data = cached_analysis(symbol, timeframe, connector, strategy)
 
 if data is not None:
     # بخش متریک‌های زنده
-    m_col1, m_col2 = st.columns(2)
     last_price = data['close'].iloc[-1]
     prev_close = data['close'].iloc[-2]
     change = ((last_price - prev_close) / prev_close) * 100
+    metrics_col1, metrics_col2, metrics_col3 = st.columns(3)
     
-    m_col1.metric("Current Price", f"{last_price:.2f}", f"{change:.2f}%")
-    m_col2.metric(f"EMA {config['strategy'].get('ma_period', 60)}", f"{analysis['ma']:.2f}")
+    with metrics_col1:
+        st.metric("Price", f"{last_price:.2f}", f"{change:.2f}%")
+        
+    with metrics_col2:
+        ma_val = analysis.get('ma', 0)
+        st.metric("EMA 60", f"{ma_val:.2f}")
+        
+    with metrics_col3:
+        # نمایش قدرت روند بر اساس تعداد کندل‌های اسپایک
+        spike_info = analysis.get('spike', {})
+        strength_count = int(spike_info.get('strength', 0) * 5) # برگرداندن به تعداد کندل
+        st.metric("Trend Strength", f"{strength_count} Bars", "Price Action")
     
     st.markdown("---")
     

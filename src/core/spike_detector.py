@@ -53,9 +53,12 @@ class SpikeDetector:
             return self._empty_result()
         
     def _fast_higher_lows(self, lows: np.ndarray) -> int:
-            """تشخیص سریع کف‌های بالاتر"""
+            """
+            تشخیص سریع کف‌های بالاتر (Al Brooks Style)
+            تعداد کندل‌هایی که کف‌شان بالاتر از کف کندل قبلی است
+            """
             count = 0
-            for i in range(len(lows)-1, 1, -1):
+            for i in range(len(lows)-1, 0, -1):
                 if lows[i] > lows[i-1]:
                     count += 1
                 else:
@@ -63,9 +66,12 @@ class SpikeDetector:
             return count
 
     def _fast_lower_highs(self, highs: np.ndarray) -> int:
-        """تشخیص سریع سقف‌های پایین‌تر"""
+        """
+        تشخیص سریع سقف‌های پایین‌تر (Al Brooks Style)
+        تعداد کندل‌هایی که سقف‌شان پایین‌تر از سقف کندل قبلی است
+        """
         count = 0
-        for i in range(len(highs)-1, 1, -1):
+        for i in range(len(highs)-1, 0, -1):
             if highs[i] < highs[i-1]:
                 count += 1
             else:

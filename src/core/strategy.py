@@ -110,59 +110,61 @@ class SP2LStrategy:
             }
     
     def _generate_signal(self, trend, spike, pullback, ma, data, pivots, fvg, is_big_candle):
-        """تولید سیگنال نهایی بر اساس ترکیب عوامل (توالی زمانی)"""
+        """تولید سیگنال نهایی بر اساس الگوهای البروکس (اسپایک و گام دوم)"""
         last_price = data['close'].iloc[-1]
         
-        # فیلتر Big Candle - فقط زمانی که به دنبال تریگر هستیم چک می‌شود
-        # برای الان کامنت می‌کنیم تا ببینیم فرکانس معاملات چقدر تغییر می‌کند
-        # if is_big_candle:
-        #     self.logger.info("Signal skipped: Big Candle detected")
-        #     return {'type': 'neutral'}
-            
-        # فقط در صورتی که در ناحیه پولبک باشیم بررسی را ادامه می‌دهیم
+        # تریگر: تشخیص اولین پولبک (شکست کف/سقف کندل قبلی)
         if pullback.get('is_pullback', False):
             
             pullback_type = pullback.get('pullback_type')
             
-            if pullback_type == 'bullish':
-                # فیلتر FVG صعودی
-                if self.config.get('strategy', {}).get('fvg_bull', True) and not fvg.get('bullish', False):
-                    return {'type': 'neutral'}
+            if pullback_type == 'bullish': # پولبک در حرکت صعودی (شکست کف قبلی)
+                # بررسی وجود اسپایک صعودی (حرکت قوی بدون پولبک) در کندل‌های گذشته
+                has_recent_spike, count, base_price, peak_price = self._find_recent_spike(data, 'bullish')
+                
+                if has_recent_spike:
+                    spike_height = peak_price - base_price
+                    # تارگت گام دوم: اندازه اسپایک از محل ورود (یا شروع پولبک)
+                    tp = last_price + spike_height
+                    # استاپ: زیر کف اسپایک
+                    sl = base_price
                     
-                # بررسی وجود اسپایک صعودی در کندل‌های گذشته
-                has_recent_spike, confidence, base_price, peak_price = self._find_recent_spike(data, 'bullish')
-                if has_recent_spike and base_price > 0:
-                    sl = self._calculate_stop_loss(data, direction='buy', base_price=base_price, pivots=pivots)
-                    
-                    if last_price <= sl:
+                    if last_price <= sl or tp <= last_price:
                         return {'type': 'neutral'}
                         
-                    tp = self._calculate_take_profit(data, direction='buy', entry=last_price, sl=sl, pivots=pivots)
-                    
                     return {
                         'type': 'buy',
                         'entry': float(last_price),
-                        'sl': sl,
-                        'tp': tp,
-                        'confidence': float(confidence / 5)
+                        'sl': float(sl),
+                        'tp': float(tp),
+                        'confidence': float(min(count / 5.0, 1.0)),
+                        'comment': f"Al Brooks L2 (Spike: {count} bars)"
                     }
                     
-            elif pullback_type == 'bearish':
-                # فیلتر FVG نزولی
-                if self.config.get('strategy', {}).get('fvg_bear', True) and not fvg.get('bearish', False):
-                    return {'type': 'neutral'}
-                    
+            elif pullback_type == 'bearish': # پولبک در حرکت نزولی (شکست سقف قبلی)
                 # بررسی وجود اسپایک نزولی در کندل‌های گذشته
-                has_recent_spike, confidence, base_price, peak_price = self._find_recent_spike(data, 'bearish')
-                if has_recent_spike and base_price > 0:
-                    # بررسی نوع روند نزولی (اختیاری)
-                    sl = self._calculate_stop_loss(data, direction='sell', base_price=base_price, pivots=pivots)
+                has_recent_spike, count, base_price, peak_price = self._find_recent_spike(data, 'bearish')
+                
+                if has_recent_spike:
+                    spike_height = base_price - peak_price
+                    # تارگت گام دوم
+                    tp = last_price - spike_height
+                    # استاپ بالای سقف اسپایک
+                    sl = base_price
                     
-                    if last_price >= sl:
+                    if last_price >= sl or tp >= last_price:
                         return {'type': 'neutral'}
                         
-                    tp = self._calculate_take_profit(data, direction='sell', entry=last_price, sl=sl, pivots=pivots)
+                    return {
+                        'type': 'sell',
+                        'entry': float(last_price),
+                        'sl': float(sl),
+                        'tp': float(tp),
+                        'confidence': float(min(count / 5.0, 1.0)),
+                        'comment': f"Al Brooks L2 (Spike: {count} bars)"
+                    }
                     
+        return {'type': 'neutral'}
                     return {
                         'type': 'sell',
                         'entry': float(last_price),

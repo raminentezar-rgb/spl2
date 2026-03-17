@@ -22,61 +22,40 @@ class PullbackFinder:
         
     def find(self, data: pd.DataFrame) -> Dict:
         """
-        یافتن پولبک در داده‌ها
-        
-        Args:
-            data: دیتافریم با OHLC داده‌ها
-            
-        Returns:
-            Dict: اطلاعات پولبک
+        یافتن پولبک در داده‌ها (Al Brooks Style)
+        تریگر: شکستن سقف/کف کندل قبلی
         """
         try:
-            if len(data) < self.ma_period + 5:
-                return {
-                    'is_pullback': False,
-                    'pullback_type': 'none',
-                    'distance_to_ma': None,
-                    'ma_value': None
-                }
+            if len(data) < 2:
+                return {'is_pullback': False, 'pullback_type': 'none'}
             
-            # محاسبه میانگین متحرک
-            ma_values = self.ma.calculate(data)
-            current_ma = ma_values.iloc[-1]
-            last_price = data['close'].iloc[-1]
+            last_low = data['low'].iloc[-1]
+            prev_low = data['low'].iloc[-2]
+            last_high = data['high'].iloc[-1]
+            prev_high = data['high'].iloc[-2]
             
-            # فاصله تا میانگین متحرک
-            distance = abs(last_price - current_ma) / current_ma
+            # تشخیص پولبک بر اساس شکست کندل قبلی
+            is_bullish_pb = last_low < prev_low  # پولبک در حرکت صعودی (شکست کف قبلی)
+            is_bearish_pb = last_high > prev_high # پولبک در حرکت نزولی (شکست سقف قبلی)
             
-            # تشخیص نوع پولبک
-            if distance < self.pullback_threshold:
-                # نزدیک به میانگین متحرک
-                
-                # تشخیص جهت
-                if last_price > current_ma:
-                    pullback_type = 'bullish'  # قیمت بالای MA (اصلاح نزولی به MA)
-                else:
-                    pullback_type = 'bearish'  # قیمت پایین MA (اصلاح صعودی به MA)
-                
-                # بررسی واگرایی
-                divergence = self._check_divergence(data, ma_values)
-                
+            if is_bullish_pb:
                 return {
                     'is_pullback': True,
-                    'pullback_type': pullback_type,
-                    'distance_to_ma': distance,
-                    'ma_value': current_ma,
-                    'price': last_price,
-                    'divergence': divergence,
-                    'confidence': 1 - (distance / self.pullback_threshold)
+                    'pullback_type': 'bullish',
+                    'trigger_price': last_low,
+                    'prev_low': prev_low
+                }
+            elif is_bearish_pb:
+                return {
+                    'is_pullback': True,
+                    'pullback_type': 'bearish',
+                    'trigger_price': last_high,
+                    'prev_high': prev_high
                 }
             
             return {
                 'is_pullback': False,
-                'pullback_type': 'none',
-                'distance_to_ma': distance,
-                'ma_value': current_ma,
-                'price': last_price,
-                'confidence': 0
+                'pullback_type': 'none'
             }
             
         except Exception as e:
