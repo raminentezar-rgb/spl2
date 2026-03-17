@@ -165,16 +165,7 @@ class SP2LStrategy:
                     }
                     
         return {'type': 'neutral'}
-                    return {
-                        'type': 'sell',
-                        'entry': float(last_price),
-                        'sl': sl,
-                        'tp': tp,
-                        'confidence': float(confidence / 5)
-                    }
-                    
-        return {'type': 'neutral'}
-    
+
     def _find_recent_spike(self, data: pd.DataFrame, direction: str) -> Tuple[bool, int, float, float]:
         """جستجوی بهینه اسپایک در کندل‌های اخیر (بدون لوپ سنگین)"""
         if len(data) < 70:
