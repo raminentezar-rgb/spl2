@@ -143,6 +143,7 @@ class SP2LTradingBot:
                 return
             
             # 3. بررسی و اعلام سیگنال
+            analysis = self.strategy.analyze(data)
             signal = analysis['signal']
             if signal['type'] != 'neutral':
                 current_bar_time = data.index[-1]
