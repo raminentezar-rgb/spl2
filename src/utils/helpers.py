@@ -77,7 +77,11 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
     if 'mt5' in config:
         # فقط در صورتی که در .env تعریف شده باشند جایگزین کن
         if env_vars.get('login') and env_vars['login'] != '12345678':
-            config['mt5']['login'] = int(env_vars['login'])
+            login_val = env_vars['login']
+            try:
+                config['mt5']['login'] = int(login_val)
+            except ValueError:
+                config['mt5']['login'] = login_val
         if env_vars.get('password'):
             config['mt5']['password'] = env_vars['password']
         if env_vars.get('server') and env_vars['server'] != 'BrokerServer':
