@@ -51,7 +51,7 @@ class SP2LTradingBot:
         # تلگرام
         self.telegram = TelegramBot(
             self.config.get('telegram', {}).get('token'),
-            self.config.get('telegram', {}).get('chat_id')
+            self.config.get('telegram', {}).get('chat_ids')
         )
         
     def initialize(self) -> bool:
@@ -197,24 +197,36 @@ class SP2LTradingBot:
             self.logger.error(f"Error processing {symbol} @ {timeframe}: {e}")
     
     def _check_mtf_alignment(self, symbol: str, timeframe: str, signal_type: str) -> bool:
-        """بررسی هم‌جهت بودن سیگنال با روند تایم‌فریم‌های بالاتر"""
-        tf_hierarchy = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
+        """بررسی هم‌جهت بودن سیگنال با روند تایم‌فریم‌های بالاتر یا تمام تایم‌فریم‌ها"""
+        tf_hierarchy = self.config.get('trading', {}).get('timeframes', ["M1", "M5", "M15", "H1", "H4", "D1"])
+        strategy_cfg = self.config.get('strategy', {})
+        full_alignment = strategy_cfg.get('full_mtf_alignment', False)
+        
         try:
             curr_idx = tf_hierarchy.index(timeframe)
         except ValueError:
-            return True # اگر تایم‌فریم در لیست نبود، فیلتر نکن
+            return True
             
-        # چک کردن تمام تایم‌فریم‌های بالاتر که دیتای آن‌ها موجود است
-        for i in range(curr_idx + 1, len(tf_hierarchy)):
-            higher_tf = tf_hierarchy[i]
-            higher_trend = self.last_signals.get((symbol, higher_tf))
+        # محدوده بررسی: یا فقط بالاترها (استاندارد) یا همه (Full)
+        check_range = range(len(tf_hierarchy)) if full_alignment else range(curr_idx + 1, len(tf_hierarchy))
+        
+        for i in check_range:
+            # اگر حالت معمولی است، خودش را چک نکند (قبلاً شده)
+            if not full_alignment and i == curr_idx:
+                continue
+                
+            check_tf = tf_hierarchy[i]
+            trend = self.last_signals.get((symbol, check_tf))
             
-            if higher_trend and higher_trend != 'neutral':
-                # اگر سیگنال خرید است اما روند بالا نزولی است، یا برعکس
-                if signal_type == 'buy' and higher_trend == 'bearish':
+            if trend and trend != 'neutral':
+                # بررسی تضاد روند
+                if signal_type == 'buy' and trend == 'bearish':
                     return False
-                if signal_type == 'sell' and higher_trend == 'bullish':
+                if signal_type == 'sell' and trend == 'bullish':
                     return False
+            elif full_alignment:
+                # در حالت Full، اگر یکی از تایم‌فریم‌ها هنوز بیطرف (Neutral) باشد، سیگنال ندهد
+                return False
         
         return True
 

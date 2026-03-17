@@ -19,7 +19,8 @@ strategy:
   ma_period: 40
   pullback_threshold: 0.001
   risk_reward_ratio: 1.8
-  mtf_alignment: true     # فقط سیگنال‌های هم‌جهت با تایم‌فریم بالاتر ارسال شوند
+  mtf_alignment: true       # بررسی هم‌جهت بودن با تایم‌فریم‌های بالاتر
+  full_mtf_alignment: true   # تمام تایم‌فریم‌ها باید هم‌رنگ (هم‌جهت) باشند
   
   # New filters from TradingView
   fvg_bull: true
@@ -75,4 +76,4 @@ backtest:
 
 telegram:
   token: "8729090034:AAHUsKSw49XQai_SKSdP-P6c09-tEsf4avo"
-  chat_id: "@signalspl2"
+  chat_ids: ["@signalspl2", "8336606408"]  # هم کانال و هم چت خصوصی
