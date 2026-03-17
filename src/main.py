@@ -197,35 +197,43 @@ class SP2LTradingBot:
             self.logger.error(f"Error processing {symbol} @ {timeframe}: {e}")
     
     def _check_mtf_alignment(self, symbol: str, timeframe: str, signal_type: str) -> bool:
-        """بررسی هم‌جهت بودن سیگنال با روند تایم‌فریم‌های بالاتر یا تمام تایم‌فریم‌ها"""
+        """بررسی هوشمند هم‌جهت بودن تمام تایم‌فریم‌های فعال"""
         tf_hierarchy = self.config.get('trading', {}).get('timeframes', ["M1", "M5", "M15", "H1", "H4", "D1"])
         strategy_cfg = self.config.get('strategy', {})
-        full_alignment = strategy_cfg.get('full_mtf_alignment', False)
+        full_alignment = strategy_cfg.get('full_mtf_alignment', True)
         
+        # ۱. چک کردن فاز گرم‌کردن (آیا تمام تایم‌فریم‌ها حداقل یک بار تحلیل شده‌اند؟)
+        active_tfs_for_symbol = [tf for (s, tf) in self.last_signals.keys() if s == symbol]
+        if len(active_tfs_for_symbol) < len(tf_hierarchy):
+            self.logger.debug(f"MTF Warmup: {symbol} has {len(active_tfs_for_symbol)}/{len(tf_hierarchy)} TFs analyzed. Skipping signal.")
+            return False
+
         try:
             curr_idx = tf_hierarchy.index(timeframe)
         except ValueError:
             return True
             
-        # محدوده بررسی: یا فقط بالاترها (استاندارد) یا همه (Full)
         check_range = range(len(tf_hierarchy)) if full_alignment else range(curr_idx + 1, len(tf_hierarchy))
         
+        conflicting_tfs = []
+        active_trends = []
+        
         for i in check_range:
-            # اگر حالت معمولی است، خودش را چک نکند
-            if not full_alignment and i == curr_idx:
-                continue
-                
             check_tf = tf_hierarchy[i]
             trend = self.last_signals.get((symbol, check_tf))
             
-            # منطق جدید: فقط اگر روند فعالی وجود داشته باشد و متضاد باشد، بلاک کن
-            # تایم‌فریم‌های خنثی (Neutral) نادیده گرفته می‌شوند
             if trend and trend != 'neutral':
+                active_trends.append(f"{check_tf}:{trend}")
                 if signal_type == 'buy' and trend == 'bearish':
-                    return False
+                    conflicting_tfs.append(check_tf)
                 if signal_type == 'sell' and trend == 'bullish':
-                    return False
+                    conflicting_tfs.append(check_tf)
         
+        if conflicting_tfs:
+            self.logger.info(f"MTF REJECTED: {symbol} {timeframe} {signal_type} conflicts with {conflicting_tfs}. Trends: {active_trends}")
+            return False
+            
+        self.logger.info(f"MTF APPROVED: {symbol} {timeframe} {signal_type} aligns with all active trends: {active_trends}")
         return True
 
     def _execute_signal(self, symbol, analysis, account, positions):
