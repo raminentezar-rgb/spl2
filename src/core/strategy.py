@@ -95,6 +95,7 @@ class SP2LStrategy:
                 'pivots': pivot_levels,
                 'fvg': fvg_present,
                 'is_big_candle': is_big_candle,
+                'trend_direction': trend.get('direction', 'neutral'),
                 'timestamp': data.index[-1]
             }
             

@@ -153,7 +153,19 @@ class SP2LTradingBot:
             # 3. بررسی و اعلام سیگنال
             analysis = self.strategy.analyze(data)
             signal = analysis['signal']
+            
+            # ذخیره آخرین وضعیت روند برای چک کردن MTF
+            current_trend = analysis.get('trend_direction', 'neutral')
+            self.last_signals[(symbol, timeframe)] = current_trend
+            
             if signal['type'] != 'neutral':
+                # چک کردن هم‌راستایی تایم‌فریم‌ها (MTF Alignment)
+                if self.config.get('strategy', {}).get('mtf_alignment', False):
+                    is_aligned = self._check_mtf_alignment(symbol, timeframe, signal['type'])
+                    if not is_aligned:
+                        self.logger.info(f"Signal skipped (MTF Conflict): {symbol} {timeframe} {signal['type']}")
+                        return
+                
                 current_bar_time = data.index[-1]
                 last_sent_time = self.last_sent_signals.get((symbol, timeframe))
                 
@@ -184,6 +196,28 @@ class SP2LTradingBot:
         except Exception as e:
             self.logger.error(f"Error processing {symbol} @ {timeframe}: {e}")
     
+    def _check_mtf_alignment(self, symbol: str, timeframe: str, signal_type: str) -> bool:
+        """بررسی هم‌جهت بودن سیگنال با روند تایم‌فریم‌های بالاتر"""
+        tf_hierarchy = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
+        try:
+            curr_idx = tf_hierarchy.index(timeframe)
+        except ValueError:
+            return True # اگر تایم‌فریم در لیست نبود، فیلتر نکن
+            
+        # چک کردن تمام تایم‌فریم‌های بالاتر که دیتای آن‌ها موجود است
+        for i in range(curr_idx + 1, len(tf_hierarchy)):
+            higher_tf = tf_hierarchy[i]
+            higher_trend = self.last_signals.get((symbol, higher_tf))
+            
+            if higher_trend and higher_trend != 'neutral':
+                # اگر سیگنال خرید است اما روند بالا نزولی است، یا برعکس
+                if signal_type == 'buy' and higher_trend == 'bearish':
+                    return False
+                if signal_type == 'sell' and higher_trend == 'bullish':
+                    return False
+        
+        return True
+
     def _execute_signal(self, symbol, analysis, account, positions):
         """
         اجرای سیگنال معاملاتی
