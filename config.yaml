@@ -8,7 +8,8 @@ mt5:
 
 trading:
   symbols: ["XAUUSD", "BTCUSD", "EURUSD", "GBPUSD", "USDJPY"]
-  timeframes: ["M1", "M5", "M15"]
+  timeframes: ["M1", "M5", "M15", "H1", "H4", "D1"]
+  signal_timeframes: ["M1", "M5", "M15"]  # فقط برای این تایم‌فریم‌ها سیگنال ارسال شود
   volume: 0.01
   magic_number: 234000
   data_source: "yahoo"  # Options: "mt5", "yahoo"

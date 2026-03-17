@@ -166,25 +166,31 @@ class SP2LTradingBot:
                         self.logger.info(f"Signal skipped (MTF Conflict): {symbol} {timeframe} {signal['type']}")
                         return
                 
-                current_bar_time = data.index[-1]
-                last_sent_time = self.last_sent_signals.get((symbol, timeframe))
+                # فقط برای تایم‌فریم‌های مشخص شده در تنظیمات سیگنال بفرست
+                signal_tfs = self.config.get('trading', {}).get('signal_timeframes', tf_hierarchy)
                 
-                # فقط اگر برای این کندل قبلاً پیام نفرستادیم، ارسال کن
-                if last_sent_time != current_bar_time:
-                    self.logger.info(f"New Signal: {symbol} ({timeframe}) - {signal['type']}")
+                if timeframe in signal_tfs:
+                    current_bar_time = data.index[-1]
+                    last_sent_time = self.last_sent_signals.get((symbol, timeframe))
                     
-                    # ارسال به تلگرام با ذکر تایم‌فریم
-                    self.telegram.send_signal(
-                        symbol=symbol,
-                        signal_type=signal['type'],
-                        entry=signal['entry'],
-                        sl=signal['sl'],
-                        tp=signal['tp'],
-                        timeframe=timeframe
-                    )
-                    
-                    # آپدیت وضعیت ارسال
-                    self.last_sent_signals[(symbol, timeframe)] = current_bar_time
+                    # فقط اگر برای این کندل قبلاً پیام نفرستادیم، ارسال کن
+                    if last_sent_time != current_bar_time:
+                        self.logger.info(f"New Signal: {symbol} ({timeframe}) - {signal['type']}")
+                        
+                        # ارسال به تلگرام با ذکر تایم‌فریم
+                        self.telegram.send_signal(
+                            symbol=symbol,
+                            signal_type=signal['type'],
+                            entry=signal['entry'],
+                            sl=signal['sl'],
+                            tp=signal['tp'],
+                            timeframe=timeframe
+                        )
+                        
+                        # آپدیت وضعیت ارسال
+                        self.last_sent_signals[(symbol, timeframe)] = current_bar_time
+                else:
+                    self.logger.debug(f"Signal suppressed: {symbol} {timeframe} is not in signal_timeframes.")
                 
                 # اجرای معامله (فقط برای تایم‌فریم اصلی یا طبق استراتژی)
                 # فعلاً معامله خودکار را محدود به تایم‌فریم اول لیست می‌کنیم اگر پوزیشن‌سایزر باشد
