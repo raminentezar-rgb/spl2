@@ -25,13 +25,13 @@ strategy:
   fvg_bear: true
   big_candle_filter_x: 5
   
-  # Professional Filters (v3.0)
-  adx_filter: true
+  # Professional Filters (v3.0) - [DISABLED for higher frequency]
+  adx_filter: false
   adx_threshold: 25   # Lower than 25 is weak trend
   adx_period: 14
-  divergence_filter: true
+  divergence_filter: false
   rsi_period: 14
-  news_impact_filter: true
+  news_impact_filter: false
   news_safety_buffer_mins: 30
   
   # Stop Loss Strategy

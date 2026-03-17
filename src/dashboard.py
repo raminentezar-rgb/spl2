@@ -145,19 +145,13 @@ analysis, data = cached_analysis(symbol, timeframe, connector, strategy)
 
 if data is not None:
     # بخش متریک‌های زنده
-    m_col1, m_col2, m_col3 = st.columns(3)
+    m_col1, m_col2 = st.columns(2)
     last_price = data['close'].iloc[-1]
     prev_close = data['close'].iloc[-2]
     change = ((last_price - prev_close) / prev_close) * 100
     
     m_col1.metric("Current Price", f"{last_price:.2f}", f"{change:.2f}%")
     m_col2.metric(f"EMA {config['strategy'].get('ma_period', 60)}", f"{analysis['ma']:.2f}")
-    
-    # نمایش ADX و قدرت روند
-    adx_val = analysis.get('adx', 0)
-    adx_threshold = config.get('strategy', {}).get('adx_threshold', 25)
-    trend_status = "Strong 💪" if adx_val >= adx_threshold else "Weak 😴"
-    m_col3.metric("Trend Strength (ADX)", f"{adx_val:.1f}", trend_status)
     
     st.markdown("---")
     

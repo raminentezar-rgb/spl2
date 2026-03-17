@@ -80,15 +80,10 @@ class SP2LStrategy:
             fvg_present = self.fvg_indicator.is_present(data)
             is_big_candle = self.big_candle_filter.is_big_candle(data)
             
-            adx_values = self.adx_indicator.calculate(data)
-            current_adx = float(adx_values.iloc[-1]) if not adx_values.empty else 0
-            
-            divergence = self.divergence_detector.detect(data)
-            
             # 7. تصمیم‌گیری نهایی
             signal = self._generate_signal(
                 trend, spike_result, pullback_result, ma_values, data, pivot_levels, 
-                fvg_present, is_big_candle, current_adx, divergence
+                fvg_present, is_big_candle
             )
             
             return {
@@ -100,8 +95,6 @@ class SP2LStrategy:
                 'pivots': pivot_levels,
                 'fvg': fvg_present,
                 'is_big_candle': is_big_candle,
-                'adx': current_adx,
-                'divergence': divergence,
                 'timestamp': data.index[-1]
             }
             
@@ -116,22 +109,9 @@ class SP2LStrategy:
                 'error': str(e)
             }
     
-    def _generate_signal(self, trend, spike, pullback, ma, data, pivots, fvg, is_big_candle, adx, divergence):
-        """تولید سیگنال نهایی بر اساس ترکیب عوامل و فیلترهای حرفه‌ای"""
+    def _generate_signal(self, trend, spike, pullback, ma, data, pivots, fvg, is_big_candle):
+        """تولید سیگنال نهایی بر اساس ترکیب عوامل (توالی زمانی)"""
         last_price = data['close'].iloc[-1]
-        
-        # ۱. فیلتر ADX (قدرت روند)
-        adx_threshold = self.config.get('strategy', {}).get('adx_threshold', 25)
-        if self.config.get('strategy', {}).get('adx_filter', True):
-            if adx < adx_threshold:
-                return {'type': 'neutral'}
-                
-        # ۲. فیلتر واگرایی (Divergence Check)
-        # برای خرید، واگرایی صعودی یک امتیاز مثبت بزرگ است
-        # اما واگرایی نزولی در حالی که روند صعودی است، ریسک را بالا می‌برد
-        if self.config.get('strategy', {}).get('divergence_filter', True):
-            # اگر سیگنال خرید می‌خواهیم اما واگرایی نزولی داریم، صرف‌نظر کن
-            pass # پیاده‌سازی در بلوک‌های پایین
         
         # فیلتر Big Candle - فقط زمانی که به دنبال تریگر هستیم چک می‌شود
         # برای الان کامنت می‌کنیم تا ببینیم فرکانس معاملات چقدر تغییر می‌کند
@@ -152,10 +132,6 @@ class SP2LStrategy:
                 # بررسی وجود اسپایک صعودی در کندل‌های گذشته
                 has_recent_spike, confidence, base_price, peak_price = self._find_recent_spike(data, 'bullish')
                 if has_recent_spike and base_price > 0:
-                    # فیلتر واگرایی منفی در روند صعودی
-                    if self.config.get('strategy', {}).get('divergence_filter', True) and divergence['bearish_div']:
-                        return {'type': 'neutral'}
-                        
                     sl = self._calculate_stop_loss(data, direction='buy', base_price=base_price, pivots=pivots)
                     
                     if last_price <= sl:
@@ -179,10 +155,7 @@ class SP2LStrategy:
                 # بررسی وجود اسپایک نزولی در کندل‌های گذشته
                 has_recent_spike, confidence, base_price, peak_price = self._find_recent_spike(data, 'bearish')
                 if has_recent_spike and base_price > 0:
-                    # فیلتر واگرایی مثبت در روند نزولی
-                    if self.config.get('strategy', {}).get('divergence_filter', True) and divergence['bullish_div']:
-                        return {'type': 'neutral'}
-                        
+                    # بررسی نوع روند نزولی (اختیاری)
                     sl = self._calculate_stop_loss(data, direction='sell', base_price=base_price, pivots=pivots)
                     
                     if last_price >= sl:
