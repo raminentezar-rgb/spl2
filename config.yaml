@@ -72,3 +72,6 @@ backtest:
   initial_balance: 10000
   commission: 0.0
   slippage: 1
+telegram:
+  token: "8133506408:AAFeS-14t8_STRATE_58O"
+  chat_id: "-1003792831129"
