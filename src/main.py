@@ -34,6 +34,9 @@ class SP2LTradingBot:
         self.strategy = None
         self.order_manager = None
         self.position_sizers = {}
+        self.data_source = None
+        self.yahoo_connector = None
+        self.signal_only = True
         
         # وضعیت و ترکینگ سیگنال
         self.is_running = False
