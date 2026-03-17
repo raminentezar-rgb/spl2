@@ -20,7 +20,7 @@ strategy:
   pullback_threshold: 0.001
   risk_reward_ratio: 1.8
   mtf_alignment: true       # بررسی هم‌جهت بودن با تایم‌فریم‌های بالاتر
-  full_mtf_alignment: true   # تمام تایم‌فریم‌ها باید هم‌رنگ (هم‌جهت) باشند
+  full_mtf_alignment: true   # تمام تایم‌فریم‌های روشن (غیر خنثی) باید هم‌رنگ باشند
   
   # New filters from TradingView
   fvg_bull: true

@@ -211,22 +211,20 @@ class SP2LTradingBot:
         check_range = range(len(tf_hierarchy)) if full_alignment else range(curr_idx + 1, len(tf_hierarchy))
         
         for i in check_range:
-            # اگر حالت معمولی است، خودش را چک نکند (قبلاً شده)
+            # اگر حالت معمولی است، خودش را چک نکند
             if not full_alignment and i == curr_idx:
                 continue
                 
             check_tf = tf_hierarchy[i]
             trend = self.last_signals.get((symbol, check_tf))
             
+            # منطق جدید: فقط اگر روند فعالی وجود داشته باشد و متضاد باشد، بلاک کن
+            # تایم‌فریم‌های خنثی (Neutral) نادیده گرفته می‌شوند
             if trend and trend != 'neutral':
-                # بررسی تضاد روند
                 if signal_type == 'buy' and trend == 'bearish':
                     return False
                 if signal_type == 'sell' and trend == 'bullish':
                     return False
-            elif full_alignment:
-                # در حالت Full، اگر یکی از تایم‌فریم‌ها هنوز بیطرف (Neutral) باشد، سیگنال ندهد
-                return False
         
         return True
 
