@@ -64,7 +64,7 @@ risk_management:
 logging:
   level: "INFO"
   file: "logs/trading.log"
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  format: "%%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 backtest:
   start_date: "2026-01-04"
@@ -72,6 +72,7 @@ backtest:
   initial_balance: 10000
   commission: 0.0
   slippage: 1
+
 telegram:
   token: "8133506408:AAFeS-14t8_STRATE_58O"
-  chat_id: "-1003792831129"
+  chat_id: "@signalspl2"
