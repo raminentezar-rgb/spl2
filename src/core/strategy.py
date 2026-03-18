@@ -14,6 +14,7 @@ from ..indicators.custom_indicators import BigCandleFilter
 from ..indicators.trend_indicators import ADXIndicator, DivergenceDetector
 from ..utils.logger import setup_logger
 import numpy as np
+import pytz
 from typing import Dict, Optional, Tuple
 try:
     import talib
@@ -80,7 +81,25 @@ class SP2LStrategy:
             fvg_present = self.fvg_indicator.is_present(data)
             is_big_candle = self.big_candle_filter.is_big_candle(data)
             
-            # 7. تصمیم‌گیری نهایی
+            # ۷. فیلتر زمانی (فقط برای ثبت سیگنال جدید)
+            # تحلیل روند و سایر موارد همچنان انجام می‌شود اما سیگنال نهایی فقط در بازه‌های مجاز تولید می‌شود
+            if not self._is_in_trading_session(data.index[-1]):
+                # اگر در بازه معاملاتی نیستیم، فقط اطلاعات تحلیلی را برگردان (بدون سیگنال)
+                return {
+                    'signal': {'type': 'neutral'},
+                    'trend': trend,
+                    'spike': spike_result,
+                    'pullback': pullback_result,
+                    'ma': float(ma_values.iloc[-1]) if not ma_values.empty else 0,
+                    'pivots': pivot_levels,
+                    'fvg': fvg_present,
+                    'is_big_candle': is_big_candle,
+                    'trend_direction': trend.get('direction', 'neutral'),
+                    'timestamp': data.index[-1],
+                    'session_active': False
+                }
+
+            # ۸. تصمیم‌گیری نهایی
             signal = self._generate_signal(
                 trend, spike_result, pullback_result, ma_values, data, pivot_levels, 
                 fvg_present, is_big_candle
@@ -96,7 +115,8 @@ class SP2LStrategy:
                 'fvg': fvg_present,
                 'is_big_candle': is_big_candle,
                 'trend_direction': trend.get('direction', 'neutral'),
-                'timestamp': data.index[-1]
+                'timestamp': data.index[-1],
+                'session_active': True
             }
             
         except Exception as e:
@@ -124,18 +144,18 @@ class SP2LStrategy:
                 has_recent_spike, count, base_price, peak_price = self._find_recent_spike(data, 'bullish')
                 
                 if has_recent_spike:
-                    spike_height = peak_price - base_price
-                    # تارگت گام دوم: اندازه اسپایک از محل ورود (یا شروع پولبک)
-                    tp = last_price + spike_height
-                    # استاپ: زیر کف اسپایک
-                    sl = base_price
+                    entry = float(last_price)
+                    # محاسبه حد ضرر هوشمند (ریشه اسپایک با سقف ATR)
+                    sl = self._calculate_stop_loss(data, 'buy', base_price, pivots)
+                    # محاسبه حد سود بر اساس RR مطلوب
+                    tp = self._calculate_take_profit(data, 'buy', entry, sl, pivots)
                     
-                    if last_price <= sl or tp <= last_price:
+                    if entry <= sl or tp <= entry:
                         return {'type': 'neutral'}
                         
                     return {
                         'type': 'buy',
-                        'entry': float(last_price),
+                        'entry': entry,
                         'sl': float(sl),
                         'tp': float(tp),
                         'confidence': float(min(count / 5.0, 1.0)),
@@ -147,18 +167,18 @@ class SP2LStrategy:
                 has_recent_spike, count, base_price, peak_price = self._find_recent_spike(data, 'bearish')
                 
                 if has_recent_spike:
-                    spike_height = base_price - peak_price
-                    # تارگت گام دوم
-                    tp = last_price - spike_height
-                    # استاپ بالای سقف اسپایک
-                    sl = base_price
+                    entry = float(last_price)
+                    # محاسبه حد ضرر هوشمند
+                    sl = self._calculate_stop_loss(data, 'sell', base_price, pivots)
+                    # محاسبه حد سود
+                    tp = self._calculate_take_profit(data, 'sell', entry, sl, pivots)
                     
-                    if last_price >= sl or tp >= last_price:
+                    if entry >= sl or tp >= entry:
                         return {'type': 'neutral'}
                         
                     return {
                         'type': 'sell',
-                        'entry': float(last_price),
+                        'entry': entry,
                         'sl': float(sl),
                         'tp': float(tp),
                         'confidence': float(min(count / 5.0, 1.0)),
@@ -166,6 +186,33 @@ class SP2LStrategy:
                     }
                     
         return {'type': 'neutral'}
+
+    def _is_in_trading_session(self, timestamp: pd.Timestamp) -> bool:
+        """بررسی اینکه آیا زمان فعلی در یکی از پنجره‌های معاملاتی مجاز است یا خیر"""
+        session_cfg = self.config.get('trading', {}).get('sessions', {})
+        if not session_cfg or not session_cfg.get('enabled', False):
+            return True
+        
+        try:
+            target_tz = pytz.timezone(self.config.get('trading', {}).get('timezone', 'Asia/Tehran'))
+            
+            # تبدیل زمان دیتا به منطقه زمانی هدف (ایران)
+            if timestamp.tzinfo is None:
+                # اگر دیتا بدون تایم‌زون بود، فرض می‌کنیم UTC است
+                dt_target = timestamp.replace(tzinfo=pytz.UTC).astimezone(target_tz)
+            else:
+                dt_target = timestamp.astimezone(target_tz)
+                
+            curr_time_str = dt_target.strftime('%H:%M')
+            
+            for start_str, end_str in session_cfg.get('windows', []):
+                if start_str <= curr_time_str <= end_str:
+                    return True
+                    
+            return False
+        except Exception as e:
+            self.logger.error(f"Error checking session: {e}")
+            return True # در صورت بروز خطا، برای احتیاط فیلتر را نادیده می‌گیریم
 
     def _find_recent_spike(self, data: pd.DataFrame, direction: str) -> Tuple[bool, int, float, float]:
         """جستجوی بهینه اسپایک در کندل‌های اخیر (بدون لوپ سنگین)"""
@@ -234,61 +281,38 @@ class SP2LStrategy:
         return False, 0, 0.0, 0.0
 
     def _calculate_stop_loss(self, data: pd.DataFrame, direction: str, base_price: float, pivots: Dict) -> float:
-        """محاسبه حد ضرر بر اساس استراتژی منتخب"""
-        sl_type = self.config.get('strategy', {}).get('stop_loss_type', 'ATR')
+        """محاسبه حد ضرر نهایی (ریشه اسپایک با سقف ATR)"""
+        last_close = data['close'].iloc[-1]
         
-        if sl_type == 'Pivot Point' and pivots and pivots.get('s1') and pivots.get('r1'):
-            if direction == 'buy':
-                # استاپ زیر نزدیک‌ترین سطح حمایتی پیوت یا ریشه اسپایک (هر کدام دورتر بود برای امنیت بیشتر)
-                sl = min(pivots.get('s1', base_price), base_price)
-            else:
-                # استاپ بالای نزدیک‌ترین سطح مقاومتی پیوت یا ریشه اسپایک
-                sl = max(pivots.get('r1', base_price), base_price)
-            return float(sl)
-            
-        elif sl_type == 'ATR':
-            try:
-                atr_len = self.config.get('strategy', {}).get('atr_length', 14)
-                # استفاده از ATR برای سقف حد ضرر (Max SL)
-                highs = data['high'].values
-                lows = data['low'].values
-                closes = data['close'].values
-                
-                tr = np.maximum(highs[1:] - lows[1:], 
-                                np.maximum(abs(highs[1:] - closes[:-1]), 
-                                          abs(lows[1:] - closes[:-1])))
-                atr = np.mean(tr[-atr_len:])
-                
-                multiplier = self.config.get('strategy', {}).get('stop_loss_atr_multiplier', 1.9)
-                atr_dist = atr * multiplier
-                
-                if direction == 'buy':
-                    sl = data['close'].iloc[-1] - atr_dist
-                else:
-                    sl = data['close'].iloc[-1] + atr_dist
-                return float(sl)
-            except:
-                pass
-                
-        # پیش‌فرض: ریشه اسپایک با محدودیت ATR
-        # اگر ریشه اسپایک خیلی دور بود (بیش از 3 برابر ATR)، از ATR استفاده می‌کنیم
+        # ۱. محاسبه ATR
+        atr_val = 0
         try:
             highs = data['high'].values
             lows = data['low'].values
             closes = data['close'].values
             tr = np.maximum(highs[1:] - lows[1:], np.maximum(abs(highs[1:] - closes[:-1]), abs(lows[1:] - closes[:-1])))
             atr_val = np.mean(tr[-14:])
-            
-            dist_to_base = abs(data['close'].iloc[-1] - base_price)
-            if dist_to_base > (atr_val * 3.5): # خیلی دوره
-                if direction == 'buy':
-                    return float(data['close'].iloc[-1] - (atr_val * 2.5))
-                else:
-                    return float(data['close'].iloc[-1] + (atr_val * 2.5))
         except:
-            pass
-
-        return float(base_price)
+            atr_val = abs(last_close * 0.001) # تخمین بسیار ساده
+            
+        # ۲. حد ضرر پیشنهادی (ریشه اسپایک)
+        suggested_sl = base_price
+        
+        # ۳. سقف حد ضرر بر اساس ATR (معمولاً ۲.۵ برابر برای امنیت)
+        max_dist = atr_val * self.config.get('strategy', {}).get('stop_loss_atr_multiplier', 2.5)
+        
+        if direction == 'buy':
+            # اگر ریشه اسپایک خیلی دور بود، از سقف ATR استفاده کن
+            if (last_close - suggested_sl) > max_dist:
+                suggested_sl = last_close - max_dist
+            # اطمینان از اینکه SL زیر قیمت فعلی است
+            return float(min(suggested_sl, last_close - (atr_val * 0.5)))
+        else:
+            # برای فروش
+            if (suggested_sl - last_close) > max_dist:
+                suggested_sl = last_close + max_dist
+            # اطمینان از اینکه SL بالای قیمت فعلی است
+            return float(max(suggested_sl, last_close + (atr_val * 0.5)))
 
     def _calculate_take_profit(self, data: pd.DataFrame, direction: str, entry: float, sl: float, pivots: Dict) -> float:
         """محاسبه حد سود بر اساس استراتژی منتخب"""

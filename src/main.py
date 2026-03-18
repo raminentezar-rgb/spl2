@@ -19,7 +19,7 @@ from src.core.strategy import SP2LStrategy
 from src.mt5_connector.connector import MT5Connector
 from src.mt5_connector.order_manager import OrderManager
 from src.risk_management.position_sizer import PositionSizer
-from src.utils.logger import setup_logger
+from src.utils.logger import setup_logger, get_logger
 from src.utils.helpers import load_config
 from src.utils.telegram_bot import TelegramBot
 from src.utils.yfinance_connector import YahooFinanceConnector
@@ -32,7 +32,7 @@ class SP2LTradingBot:
     def __init__(self, config_path: str = "config.yaml"):
         # بارگذاری تنظیمات
         self.config = load_config(config_path)
-        self.logger = setup_logger(__name__)
+        self.logger = get_logger(__name__)
         
         # کامپوننت‌ها
         self.connector = None
@@ -43,10 +43,11 @@ class SP2LTradingBot:
         self.yahoo_connector = None
         self.signal_only = True
         
-        # وضعیت و ترکینگ سیگنال
+        # زمانبندی و وضعیت
         self.is_running = False
         self.last_signals = {} # {(symbol, timeframe): last_signal_data}
         self.last_sent_signals = {} # {(symbol, timeframe): last_sent_bar_time}
+        self.last_heartbeat_time = 0
         
         # تلگرام
         self.telegram = TelegramBot(
@@ -58,6 +59,7 @@ class SP2LTradingBot:
         """
         مقداردهی اولیه همه کامپوننت‌ها
         """
+        self.logger.info("Initializing SP2L Trading Bot...")
         try:
             # ۱. انتخاب منبع داده
             self.data_source = self.config['trading'].get('data_source', 'mt5')
@@ -107,9 +109,12 @@ class SP2LTradingBot:
         
         try:
             while self.is_running:
-                schedule.run_pending()
+                try:
+                    schedule.run_pending()
+                except Exception as e:
+                    self.logger.error(f"Critical error in schedule loop: {e}")
+                    time.sleep(10) # تنفس بعد از خطا
                 time.sleep(1)
-                
         except KeyboardInterrupt:
             self.logger.info("Bot stopped by user")
         finally:
@@ -120,6 +125,7 @@ class SP2LTradingBot:
         بررسی بازار و انجام معامله برای تمام ارزها و تایم‌فریم‌ها
         """
         try:
+            self.logger.info("--- Starting New Analysis Cycle ---")
             symbols = self.config['trading'].get('symbols', [])
             timeframes = self.config['trading'].get('timeframes', [self.config['trading'].get('timeframe', 'M5')])
             
@@ -129,9 +135,13 @@ class SP2LTradingBot:
                 for tf in timeframes:
                     tasks.append((symbol, tf))
             
-            # اجرای موازی
+            # اجرای موازی با تایم‌اوت برای جلوگیری از هنگ کردن کل سیستم
             with ThreadPoolExecutor(max_workers=min(len(tasks), 10)) as executor:
-                executor.map(lambda p: self._process_single_symbol(p[0], p[1]), tasks)
+                # تبدیل به لیست برای اجرای فوری و اعمال تایم‌اوت
+                try:
+                    list(executor.map(lambda p: self._process_single_symbol(p[0], p[1]), tasks, timeout=45))
+                except TimeoutError:
+                    self.logger.error("Timeout occurred in check_and_trade (some symbols took too long)")
             
         except Exception as e:
             self.logger.error(f"Error in check_and_trade: {e}")
@@ -140,8 +150,16 @@ class SP2LTradingBot:
         """
         پردازش یک نماد و تایم‌فریم خاص
         """
+        # ۱. تپش قلب (Heartbeat) برای اطمینان از زنده بودن برنامه
+        current_time = time.time()
+        heartbeat_interval = self.config.get('logging', {}).get('heartbeat_interval', 10) * 60 # تبدیل به ثانیه
+        
+        if current_time - self.last_heartbeat_time > heartbeat_interval:
+            self.logger.info(f"--- BOT HEARTBEAT --- System is active. Account: {self.config.get('mt5', {}).get('login', 'N/A')} | Symbols: {len(self.last_signals)}")
+            self.last_heartbeat_time = current_time
+
         try:
-            # 1. دریافت داده‌های جدید
+            # ۱. دریافت داده‌های جدید
             if self.data_source == 'mt5':
                 data = self.connector.get_rates(symbol, timeframe, count=100)
             else:
@@ -166,7 +184,11 @@ class SP2LTradingBot:
                         self.logger.info(f"Signal skipped (MTF Conflict): {symbol} {timeframe} {signal['type']}")
                         return
                 
-                # فقط برای تایم‌فریم‌های مشخص شده در تنظیمات سیگنال بفرست
+                # ۷. فیلتر زمانی (فقط برای ثبت سیگنال جدید)
+                if not analysis.get('session_active', True):
+                    self.logger.info(f"Signal suppressed (Out of Session): {symbol} {timeframe}")
+                    return
+                tf_hierarchy = self.config.get('trading', {}).get('timeframes', ["M1", "M5", "M15", "H1", "H4", "D1"])
                 signal_tfs = self.config.get('trading', {}).get('signal_timeframes', tf_hierarchy)
                 
                 if timeframe in signal_tfs:
@@ -176,6 +198,9 @@ class SP2LTradingBot:
                     # فقط اگر برای این کندل قبلاً پیام نفرستادیم، ارسال کن
                     if last_sent_time != current_bar_time:
                         self.logger.info(f"New Signal: {symbol} ({timeframe}) - {signal['type']}")
+                        
+                        # یک وقفه کوتاه برای جلوگیری از خطای 429 تلگرام
+                        time.sleep(0.5)
                         
                         # ارسال به تلگرام با ذکر تایم‌فریم
                         self.telegram.send_signal(
@@ -208,12 +233,6 @@ class SP2LTradingBot:
         strategy_cfg = self.config.get('strategy', {})
         full_alignment = strategy_cfg.get('full_mtf_alignment', True)
         
-        # ۱. چک کردن فاز گرم‌کردن (آیا تمام تایم‌فریم‌ها حداقل یک بار تحلیل شده‌اند؟)
-        active_tfs_for_symbol = [tf for (s, tf) in self.last_signals.keys() if s == symbol]
-        if len(active_tfs_for_symbol) < len(tf_hierarchy):
-            self.logger.debug(f"MTF Warmup: {symbol} has {len(active_tfs_for_symbol)}/{len(tf_hierarchy)} TFs analyzed. Skipping signal.")
-            return False
-
         try:
             curr_idx = tf_hierarchy.index(timeframe)
         except ValueError:
@@ -228,12 +247,16 @@ class SP2LTradingBot:
             check_tf = tf_hierarchy[i]
             trend = self.last_signals.get((symbol, check_tf))
             
-            if trend and trend != 'neutral':
-                active_trends.append(f"{check_tf}:{trend}")
-                if signal_type == 'buy' and trend == 'bearish':
-                    conflicting_tfs.append(check_tf)
-                if signal_type == 'sell' and trend == 'bullish':
-                    conflicting_tfs.append(check_tf)
+            # اگر این تایم‌فریم هنوز تحلیل نشده، فعلاً نادیده‌اش می‌گیریم (به جای رد کردن کل سیگنال)
+            # این باعث می‌شود ربات در لحظه شروع هم سیگنال بدهد
+            if not trend or trend == 'neutral':
+                continue
+                
+            active_trends.append(f"{check_tf}:{trend}")
+            if signal_type == 'buy' and trend == 'bearish':
+                conflicting_tfs.append(check_tf)
+            if signal_type == 'sell' and trend == 'bullish':
+                conflicting_tfs.append(check_tf)
         
         if conflicting_tfs:
             self.logger.info(f"MTF REJECTED: {symbol} {timeframe} {signal_type} conflicts with {conflicting_tfs}. Trends: {active_trends}")

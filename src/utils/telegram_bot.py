@@ -27,21 +27,36 @@ class TelegramBot:
             return False
             
         success = True
+        import time
         for chat_id in self.chat_ids:
-            try:
-                payload = {
-                    "chat_id": chat_id,
-                    "text": text,
-                    "parse_mode": "HTML"
-                }
-                response = requests.post(self.base_url, json=payload, timeout=10)
-                
-                if response.status_code != 200:
-                    logger.error(f"Telegram error for {chat_id}: {response.text}")
-                    success = False
-            except Exception as e:
-                logger.error(f"Error sending to {chat_id}: {e}")
-                success = False
+            # تا ۳ بار تلاش برای هر پیام در صورت خطای Rate Limit
+            for attempt in range(3):
+                try:
+                    payload = {
+                        "chat_id": chat_id,
+                        "text": text,
+                        "parse_mode": "HTML"
+                    }
+                    response = requests.post(self.base_url, json=payload, timeout=10)
+                    
+                    if response.status_code == 200:
+                        # مکث کوتاه بین پیام‌ها برای جلوگیری از اسپم
+                        time.sleep(0.5)
+                        break
+                    elif response.status_code == 429:
+                        # اگر تلگرام از ما خواست صبر کنیم
+                        retry_after = response.json().get('parameters', {}).get('retry_after', 5)
+                        logger.warning(f"Telegram Rate Limit hit. Waiting {retry_after}s before retry.")
+                        time.sleep(retry_after + 1)
+                        continue
+                    else:
+                        logger.error(f"Telegram error for {chat_id}: {response.text}")
+                        success = False
+                        break
+                except Exception as e:
+                    logger.error(f"Error sending to {chat_id} (attempt {attempt+1}): {e}")
+                    time.sleep(1)
+                    if attempt == 2: success = False
         
         return success
             

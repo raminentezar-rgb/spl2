@@ -1,7 +1,7 @@
 # config.yaml - نسخه پایدار و محافظه‌کارانه
 
 mt5:
-  path: "C:/Program Files/MetaTrader 5/terminal64.exe"
+  path: "C:/Program Files/Pepperstone MetaTrader 5/terminal64.exe"
   login: ${MT5_LOGIN}
   server: ${MT5_SERVER}
   timeout: 5000
@@ -12,16 +12,29 @@ trading:
   signal_timeframes: ["M1", "M5", "M15"]  # فقط برای این تایم‌فریم‌ها سیگنال ارسال شود
   volume: 0.01
   magic_number: 234000
-  data_source: "mt5"    # استفاده از متاتریدر برای دیتا و معامله
-  signal_only: false    # فعال‌سازی معامله خودکار روی حساب دمو
+  data_source: "yahoo"  # استفاده از یاهو فایننس برای دور زدن محدودیت دانشگاه
+  signal_only: true     # در محیط دانشگاه فقط سیگنال دریافت کنید (چون متاتریدر وصل نمی‌شود)
+  timezone: "Asia/Tehran" # منطقه زمانی ایران
+  sessions:
+    enabled: true
+    windows:
+      - ["09:30", "10:00"]
+      - ["10:30", "11:00"]
+      - ["14:30", "15:00"]
+      - ["16:00", "16:30"]
+      - ["17:00", "17:30"]
+      - ["17:30", "18:00"]
+      - ["18:30", "19:00"]
+      - ["19:00", "19:30"]
+      - ["21:30", "22:00"]
 
 strategy:
   min_higher_lows: 4
   ma_period: 40
   pullback_threshold: 0.001
-  risk_reward_ratio: 1.8
+  risk_reward_ratio: 2.0
   mtf_alignment: true       # بررسی هم‌جهت بودن با تایم‌فریم‌های بالاتر
-  full_mtf_alignment: true   # تمام تایم‌فریم‌های روشن (غیر خنثی) باید هم‌رنگ باشند
+  full_mtf_alignment: false  # غیرفعال کردن سخت‌گیری بیش از حد برای دریافت سیگنال بیشتر
   
   # New filters from TradingView
   fvg_bull: true
@@ -66,6 +79,7 @@ risk_management:
 logging:
   level: "INFO"
   file: "logs/trading.log"
+  heartbeat_interval: 10
   format: "%%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 backtest:

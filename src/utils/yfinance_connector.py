@@ -48,8 +48,14 @@ class YahooFinanceConnector:
             
             # دریافت داده‌ها
             ticker = yf.Ticker(yf_symbol)
-            # یاهو برای دقایق پایین فقط داده‌های اخیر را می‌دهد (مثلاً ۱ دقیقه فقط ۷ روز اخیر)
-            df = ticker.history(period='5d', interval=interval)
+            
+            # انتخاب دوره زمانی مناسب برای اطمینان از داشتن داده کافی (حداقل 100 کندل)
+            if timeframe in ['M1', 'M5']: period = '5d'
+            elif timeframe in ['M15', 'H1']: period = '15d'
+            elif timeframe == 'H4': period = '30d'
+            else: period = '60d' # D1
+            
+            df = ticker.history(period=period, interval=interval)
             
             if df.empty:
                 self.logger.warning(f"No Yahoo Finance data for {yf_symbol}")
