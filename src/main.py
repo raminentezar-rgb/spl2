@@ -192,28 +192,45 @@ class SP2LTradingBot:
                 signal_tfs = self.config.get('trading', {}).get('signal_timeframes', tf_hierarchy)
                 
                 if timeframe in signal_tfs:
-                    current_bar_time = data.index[-1]
-                    last_sent_time = self.last_sent_signals.get((symbol, timeframe))
+                    # بررسی هم‌جهت بودن تمام تایم‌فریم‌های سیگنال برای جلوگیری از گیج شدن کاربر
+                    has_conflict = False
+                    active_trends_for_log = []
                     
-                    # فقط اگر برای این کندل قبلاً پیام نفرستادیم، ارسال کن
-                    if last_sent_time != current_bar_time:
-                        self.logger.info(f"New Signal: {symbol} ({timeframe}) - {signal['type']}")
+                    for stf in signal_tfs:
+                        stf_trend = self.last_signals.get((symbol, stf), 'neutral')
+                        if stf_trend != 'neutral':
+                            active_trends_for_log.append(f"{stf}:{stf_trend}")
+                            
+                            if signal['type'] == 'buy' and stf_trend == 'bearish':
+                                has_conflict = True
+                            elif signal['type'] == 'sell' and stf_trend == 'bullish':
+                                has_conflict = True
+                    
+                    if has_conflict:
+                        self.logger.info(f"Telegram signal suppressed (Conflict in signal_tfs): {symbol} {timeframe} {signal['type']}. Trends: {active_trends_for_log}")
+                    else:
+                        current_bar_time = data.index[-1]
+                        last_sent_time = self.last_sent_signals.get((symbol, timeframe))
                         
-                        # یک وقفه کوتاه برای جلوگیری از خطای 429 تلگرام
-                        time.sleep(0.5)
-                        
-                        # ارسال به تلگرام با ذکر تایم‌فریم
-                        self.telegram.send_signal(
-                            symbol=symbol,
-                            signal_type=signal['type'],
-                            entry=signal['entry'],
-                            sl=signal['sl'],
-                            tp=signal['tp'],
-                            timeframe=timeframe
-                        )
-                        
-                        # آپدیت وضعیت ارسال
-                        self.last_sent_signals[(symbol, timeframe)] = current_bar_time
+                        # فقط اگر برای این کندل قبلاً پیام نفرستادیم، ارسال کن
+                        if last_sent_time != current_bar_time:
+                            self.logger.info(f"New Signal: {symbol} ({timeframe}) - {signal['type']}")
+                            
+                            # یک وقفه کوتاه برای جلوگیری از خطای 429 تلگرام
+                            time.sleep(0.5)
+                            
+                            # ارسال به تلگرام با ذکر تایم‌فریم
+                            self.telegram.send_signal(
+                                symbol=symbol,
+                                signal_type=signal['type'],
+                                entry=signal['entry'],
+                                sl=signal['sl'],
+                                tp=signal['tp'],
+                                timeframe=timeframe
+                            )
+                            
+                            # آپدیت وضعیت ارسال
+                            self.last_sent_signals[(symbol, timeframe)] = current_bar_time
                 else:
                     self.logger.debug(f"Signal suppressed: {symbol} {timeframe} is not in signal_timeframes.")
                 
